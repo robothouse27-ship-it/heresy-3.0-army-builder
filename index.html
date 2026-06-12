@@ -622,7 +622,7 @@ function gkey(s){return (s||"").toLowerCase().replace(/\([^)]*\)/g,"").replace(/
 function buildGloss(){
   GLOSS={}; const g=G.glossary||{};
   const add=(cat,obj)=>{for(const k in (obj||{})){const key=gkey(k);if(key&&!GLOSS[key])GLOSS[key]={name:k,desc:obj[k],cat};}};
-  add("Special Rule",g.specialRules); add("Wargear",g.wargear); add("Trait",g.traits);
+  add("Special Rule",g.specialRules); add("Core Rule",g.coreRules); add("Wargear",g.wargear); add("Trait",g.traits);
 }
 function esc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 function paraHtml(t){return esc(t).replace(/\n/g,"<br>");}
@@ -640,7 +640,13 @@ function gearTerm(name){
   if(e) return `<span class="term" data-tip="${tipRef(e.name,paraHtml(e.desc),e.cat)}">${esc(name)}</span>`;
   return esc(name);
 }
-function commaTerms(str){return (str||"").split(/,\s*/).filter(Boolean).map(term).join(", ");}
+function splitTopComma(s){ // split on commas NOT inside parentheses, e.g. "Shock (Stun, Suppressed)"
+  const out=[]; let depth=0,cur="";
+  for(const ch of (s||"")){ if(ch==="(")depth++; else if(ch===")")depth=Math.max(0,depth-1);
+    if(ch===","&&depth===0){ if(cur.trim())out.push(cur.trim()); cur=""; } else cur+=ch; }
+  if(cur.trim())out.push(cur.trim()); return out;
+}
+function commaTerms(str){return splitTopComma(str).map(term).join(", ");}
 function weaponBody(w){
   const isR=w.category==="ranged";
   const rows=isR?[["Range",w.R],["Firepower",w.FP],["RS",w.RS],["AP",w.AP],["Damage",w.D]]

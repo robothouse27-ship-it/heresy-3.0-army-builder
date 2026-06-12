@@ -67,9 +67,18 @@ def traits():
             out.setdefault(name, m.group(2).strip())
     return out
 
+def core_rules():
+    """Hand-authored core special rules, summarised from the rulebook."""
+    p = os.path.join(ROOT, "data", "coreRules.json")
+    if not os.path.exists(p):
+        return {}
+    d = json.load(open(p, encoding="utf-8"))
+    return {k: v for k, v in d.items() if not k.startswith("_")}
+
 def main():
     g = {
         "specialRules": special_rules(),
+        "coreRules": core_rules(),
         "wargear": wargear(),
         "traits": traits(),
     }
