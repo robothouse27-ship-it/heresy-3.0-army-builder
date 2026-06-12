@@ -22,6 +22,7 @@ bundle = {
     "wargearLists": load("wargearLists.json"),
     "slots":        load("slots.json"),
     "detachments":  load("detachments.json"),
+    "glossary":     load("glossary.json"),
     "units":        units,
     "meta": {
         "name": "Asuryani — Horus Heresy 3.0 (Playtest)",
