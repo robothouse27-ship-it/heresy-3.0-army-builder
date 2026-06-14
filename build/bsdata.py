@@ -18,6 +18,13 @@ def slug(s):
     s = re.sub(r"[’']", "", s or "")
     return re.sub(r"[^a-zA-Z0-9]+", "-", s).strip("-").lower()
 
+# BSData over-capitalises minor words ("Caster Of Runes In Terminator Armour").
+MINOR_WORDS = {"of","in","with","the","and","on","to","for","a","an","or","by"}
+def fix_caps(name):
+    parts = (name or "").split(" ")
+    return " ".join(w.lower() if i>0 and w.lower() in MINOR_WORDS else w
+                    for i,w in enumerate(parts))
+
 STAT_KEYS = ["M","WS","BS","S","T","W","I","A","LD","CL","WP","IN","SAV","INV"]
 SLOT_MAP = {
     "High Command":"High Command","Command":"Command","Retinue":"Retinue","Elites":"Elites",
@@ -62,13 +69,78 @@ def is_statline(prof):
     n = {c.get("name") for c in prof.iter(NS+"characteristic")}
     return {"M","WS","BS","T","W"} <= n
 
-def points(el):
-    # direct child costs only (avoid summing nested)
+def _point_cost(el):
     for c in el.findall(NS+"costs/"+NS+"cost"):
         if (c.get("name") or "").startswith("Point"):
             try: return int(float(c.get("value","0")))
             except: return 0
     return 0
+
+def points(el):
+    # direct child costs first (avoid summing nested)
+    v = _point_cost(el)
+    if v: return v
+    # squadrons/batteries carry the cost on a single per-model/crew child entry
+    for se in el.findall(NS+"selectionEntries/"+NS+"selectionEntry"):
+        v = _point_cost(se)
+        if v: return v
+    return 0
+
+def _minmax(el):
+    """parent-scoped min/max selection counts for a model/unit child entry."""
+    mn=mx=None
+    for c in el.findall(NS+"constraints/"+NS+"constraint"):
+        if c.get("field")=="selections" and c.get("scope")=="parent":
+            if c.get("type")=="min": mn=c.get("value")
+            if c.get("type")=="max": mx=c.get("value")
+    def to_i(v):
+        try: return int(float(v))
+        except: return None
+    return to_i(mn), to_i(mx)
+
+INVARIANT_PLURALS = {"Chosen","Deathsworn","Wolf-kin","Varagyr"}
+def plural(n):
+    n=(n or "").strip()
+    head=n.split()[-1] if n else n
+    if head in INVARIANT_PLURALS or n.endswith("i"): return n  # Chosen, Cataphractii
+    if n.endswith("y") and (len(n)<2 or n[-2].lower() not in "aeiou"): return n[:-1]+"ies"
+    if n.endswith("fe"): return n[:-2]+"ves"
+    if n.endswith("f"): return n[:-1]+"ves"
+    if n.endswith(("s","x","z","ch","sh")): return n+"es"
+    return n+"s"
+
+def squad_economics(entry):
+    """Asuryani-style pricing: base squad cost = sum(min x per-model cost) over
+    the unit's model/sub-unit children, plus a composition string and
+    'May include up to N additional ...' size rules. Costs in HH3.0 BSData sit on
+    per-model (or per-crew) children, so the unit-level cost is often a placeholder
+    (e.g. Fenrisian Wolf Pack lists 1pt while each Wolf is 9). Falls back to the
+    unit-level cost for single-model entries (e.g. characters) that price the unit
+    directly. Returns (points, composition_str, size_rules)."""
+    members=[]  # (name, per_cost, mn, mx) for children that are taken by default
+    upgrades=[] # (name, per_cost, extra, is_unit) for "+N more" size rules
+    for se in entry.findall(NS+"selectionEntries/"+NS+"selectionEntry"):
+        if se.get("type") not in ("model","unit"): continue
+        mn,mx=_minmax(se)
+        per=_point_cost(se)
+        nm=fix_caps((se.get("name") or "").strip())
+        if mn and mn>0:
+            members.append((nm,per,mn,mx))
+        if per and mx is not None and mn is not None and mx>mn:
+            upgrades.append((nm,per,mx-mn,se.get("type")=="unit"))
+    # New Recruit sums the unit-level cost with each member's cost x count. The
+    # unit-level cost typically prices the leader model (a Sergeant costs the same
+    # as a rank-and-file model, folded in here), so it must be added, not ignored.
+    base=_point_cost(entry)+sum(per*mn for (nm,per,mn,mx) in members)
+    if not base:  # characters / vehicles priced wholly on the unit itself
+        base=points(entry)
+    comp="\n".join(f"{mn} {nm}" for (nm,per,mn,mx) in members)
+    # "per model" wording is what the app's list-builder parser keys on; crew/squadron
+    # units (type=unit members) read "per <Crew>", mirroring the Asuryani datasheets.
+    size=[f"May include up to {extra} additional {plural(nm)} at +{per} points "
+          f"per {nm if is_unit else 'model'}"
+          for (nm,per,extra,is_unit) in upgrades]
+    return base, comp, size
 
 # ---- weapon + glossary harvesting (global) ----
 def harvest_weapons(idx):
@@ -178,20 +250,68 @@ def composition(entry, idx):
             if mn: return f"{mn} {nm}"
     return ""
 
-def build_units(idx, army_roots):
-    units={}
+# Variant suffixes/prefixes that BSData models as separate units; collapsed
+# into a base unit + priced option (see collapse_variants).
+VARIANT_PATTERNS = [
+    (r"^Mounted (.+)$", "Mounted"),
+    (r"^(.+) [Ww]ith Jump Packs?$", "With Jump Packs"),
+    (r"^(.+) [Oo]n Scimitar Jetbikes?$", "On Scimitar Jetbikes"),
+    (r"^(.+) [Ii]n Saturnine Terminator Armour$", "In Saturnine Terminator Armour"),
+    (r"^(.+) [Ii]n Terminator Armour$", "In Terminator Armour"),
+]
+def collapse_variants(units):
+    """Fold Mounted/Jump Pack/Terminator consul variants into their base unit
+    as priced options, when a base unit exists in the same slot."""
+    by_name={u["name"]:u for u in units.values()}
+    drop=set()
+    for sid,u in list(units.items()):
+        for pat,label in VARIANT_PATTERNS:
+            m=re.match(pat,u["name"])
+            if not m: continue
+            base=by_name.get(m.group(1).strip())
+            if base and base["slot"]==u["slot"] and base["id"]!=u["id"]:
+                delta=u["pointsValue"]-base["pointsValue"]
+                opt=f"{label} (+{delta} points)" if delta>0 else label
+                base.setdefault("options",[])
+                if opt not in base["options"]: base["options"].append(opt)
+                drop.add(sid)
+            break
+    for sid in drop: units.pop(sid,None)
+    return len(drop)
+
+def nested_unit_ids(army_roots):
+    """ids of type=unit entries nested as children of another unit (e.g. Rapier
+    Crew inside Rapier Battery) — surfaced via the parent, not standalone."""
+    nested=set()
     for root in army_roots:
         for entry in root.iter(NS+"selectionEntry"):
             if entry.get("type")!="unit": continue
-            name=(entry.get("name") or "").strip()
+            for ch in entry.findall(NS+"selectionEntries/"+NS+"selectionEntry"):
+                if ch.get("type")=="unit": nested.add(ch.get("id"))
+    return nested
+
+def build_units(idx, army_roots):
+    units={}
+    nested=nested_unit_ids(army_roots)
+    for root in army_roots:
+        for entry in root.iter(NS+"selectionEntry"):
+            if entry.get("type")!="unit": continue
+            if entry.get("id") in nested: continue
+            name=fix_caps((entry.get("name") or "").strip())
             if not name: continue
-            profs=[{"name":(p.get("name") or "").strip(),"stats":{k:v for k,v in chars(p).items()}}
-                   for p in entry.iter(NS+"profile") if is_statline(p)]
+            profs=[]; seen_pn=set()
+            for p in entry.iter(NS+"profile"):
+                if not is_statline(p): continue
+                pn=re.sub(r"\s+"," ",(p.get("name") or "").strip())
+                if pn in seen_pn: continue  # drop repeated nested-crew profiles
+                seen_pn.add(pn)
+                profs.append({"name":pn,"stats":{k:v for k,v in chars(p).items()}})
             if not profs: continue
             sid=slug(name)
             if sid in units: continue
             we,wg,rules=collect_equipment(entry,idx,set())
-            pts=points(entry)
+            pts,comp,size=squad_economics(entry)
+            if not comp: comp=composition(entry,idx)
             wargear={}
             allgear=sorted(we)+sorted(wg)
             if allgear: wargear["_"]=allgear
@@ -199,11 +319,13 @@ def build_units(idx, army_roots):
             if rules: sr["_"]=sorted(x for x in rules if x)
             units[sid]={
                 "id":sid,"name":name,"slot":find_slot(entry,idx) or "Unsorted",
-                "composition":composition(entry,idx),
+                "composition":comp,
                 "baseCost":f"{pts} points" if pts else "","pointsValue":pts,
-                "sizeRules":[],"lore":[],"profiles":profs,
+                "sizeRules":size,"lore":[],"profiles":profs,
                 "wargear":wargear,"specialRules":sr,"traits":[],"types":{},"options":[],
             }
+    folded=collapse_variants(units)
+    if folded: print(f"  collapsed {folded} variant units into base + options")
     return units
 
 def main():
