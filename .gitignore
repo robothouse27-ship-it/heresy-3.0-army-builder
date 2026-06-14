@@ -6,7 +6,11 @@
 # Plaintext rule sources (the editable originals) — NEVER commit to a public repo
 2- Playtest Stage/
 data/
+data_*/
 app/data.js
+app/data.*.js
+!app/data.enc.js
+!app/data.*.enc.js
 
 # Large reference rulebooks (~700MB)
 *.pdf

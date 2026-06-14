@@ -531,18 +531,22 @@ table.kv td:first-child{color:var(--muted)}
 <script>
 // The rules bundle ships encrypted (AES-256-GCM). The passphrase derives the key and
 // decrypts it in the browser — the served files never contain readable rules.
-async function deriveKey(pw,salt){
+async function deriveKey(pw,salt,iter){
   const base=await crypto.subtle.importKey("raw",new TextEncoder().encode(pw),"PBKDF2",false,["deriveKey"]);
-  return crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:(window.ENC_ITER||200000),hash:"SHA-256"},
+  return crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:(iter||200000),hash:"SHA-256"},
     base,{name:"AES-GCM",length:256},false,["decrypt"]);
 }
-async function decryptBundle(pw){
-  const raw=Uint8Array.from(atob(window.ENC_BUNDLE),c=>c.charCodeAt(0));
+// Decrypt any base64 blob with layout salt(16)|iv(12)|ciphertext|tag(16).
+async function decryptBlob(b64,iter,pw){
+  const raw=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
   const salt=raw.slice(0,16), iv=raw.slice(16,28), ct=raw.slice(28);
-  const key=await deriveKey(pw,salt);
+  const key=await deriveKey(pw,salt,iter);
   const pt=await crypto.subtle.decrypt({name:"AES-GCM",iv},key,ct);
   return JSON.parse(new TextDecoder().decode(pt));
 }
+const decryptBundle=pw=>decryptBlob(window.ENC_BUNDLE,(window.ENC_ITER||200000),pw);
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement("script");
+  s.src=src;s.onload=res;s.onerror=()=>rej(new Error("load failed: "+src));document.head.appendChild(s);});}
 async function tryUnlock(){
   const v=document.getElementById("pw").value;
   const btn=document.getElementById("pwgo"), err=document.getElementById("pwerr");
@@ -550,6 +554,7 @@ async function tryUnlock(){
   try{
     const data=await decryptBundle(v);
     sessionStorage.setItem("data",JSON.stringify(data));
+    try{sessionStorage.setItem("pw",v);}catch(e){}   // reused to decrypt other armies' bundles
     startApp(data);
   }catch(e){ err.textContent="Wrong passphrase."; btn.disabled=false; }
 }
@@ -1223,7 +1228,7 @@ const ARMIES=[
   A("loyalist","loyalist","Loyalist Astartes","#d8b35a","#6e5418","Imperial gold & midnight"),
   A("loyalist","dark-angels","Dark Angels","#2f9e63","#12502f","The First, Caliban green"),
   A("loyalist","white-scars","White Scars","#d4554a","#6e211a","Chogorian lightning"),
-  A("loyalist","space-wolves","Space Wolves","#84b6d6","#2d5a78","Fenrisian storm-grey"),
+  A("loyalist","space-wolves","Space Wolves","#84b6d6","#2d5a78","Fenrisian storm-grey",{data:"app/data.space-wolves.enc.js"}),
   A("loyalist","imperial-fists","Imperial Fists","#f0bf3e","#806012","Phalanx gold"),
   A("loyalist","blood-angels","Blood Angels","#e23b3b","#7a1414","Baal crimson & gold"),
   A("loyalist","iron-hands","Iron Hands","#aab2c0","#474f5b","Medusan black iron"),
@@ -1247,6 +1252,39 @@ const ARMIES=[
 const ARMY_MAP={}; ARMIES.forEach(a=>ARMY_MAP[a.id]=a);
 const SKIN_KEY="asuryani_skin";
 let curArmy="asuryani";
+
+// ---- per-army datasets ----
+// Asuryani ships in the main bundle (window.ENC_BUNDLE). Other armies with a
+// `data` URL load + decrypt their own encrypted bundle on demand (same
+// passphrase) and swap the dataset; theme-only armies just re-skin.
+let LOADED_ARMY="asuryani";
+async function loadArmy(id){
+  if(id===LOADED_ARMY) return false;
+  const a=ARMY_MAP[id]||{};
+  if(id!=="asuryani" && !a.data) return false;        // theme-only army: keep current data
+  let data=null;
+  const cacheKey="data:"+id, cached=sessionStorage.getItem(cacheKey);
+  if(cached){ data=JSON.parse(cached); }
+  else if(id==="asuryani"){ data=JSON.parse(sessionStorage.getItem("data")||"null"); }
+  else {
+    const pw=sessionStorage.getItem("pw")||"";
+    if(!window.ENC_ARMY || window.__encArmyFor!==id){ await loadScript(a.data); window.__encArmyFor=id; }
+    data=await decryptBlob(window.ENC_ARMY,(window.ENC_ARMY_ITER||200000),pw);
+    try{sessionStorage.setItem(cacheKey,JSON.stringify(data));}catch(e){}
+  }
+  if(!data) throw new Error("no data for "+id);
+  window.GAME_DATA=data; initEngine(); LOADED_ARMY=id; render();
+  return true;
+}
+// Theme + (if it has its own datasheets) swap the dataset.
+async function selectArmy(id){
+  applySkin(id);
+  const a=ARMY_MAP[id];
+  if((id==="asuryani"||a&&a.data) && id!==LOADED_ARMY){
+    try{ await loadArmy(id); if(typeof flash==="function") flash(a.name+" loaded"); }
+    catch(e){ if(typeof flash==="function") flash("Couldn't load "+(a?a.name:id)); }
+  }
+}
 
 function applySkin(id){
   const a=ARMY_MAP[id]||ARMIES[0];
@@ -1288,7 +1326,7 @@ function renderSkinMenu(){
     </details>`;
   }).join("");
   menu.querySelectorAll("[data-army]").forEach(b=>b.onclick=()=>{
-    applySkin(b.dataset.army); menu.classList.remove("show");
+    selectArmy(b.dataset.army); menu.classList.remove("show");
   });
 }
 function initSkinPicker(){
@@ -1297,7 +1335,10 @@ function initSkinPicker(){
   btn.onclick=e=>{e.stopPropagation();menu.classList.toggle("show");};
   document.addEventListener("click",e=>{if(!e.target.closest(".skinpick"))menu.classList.remove("show");});
   let saved="asuryani"; try{saved=localStorage.getItem(SKIN_KEY)||"asuryani";}catch(e){}
-  applySkin(ARMY_MAP[saved]?saved:"asuryani");
+  saved=ARMY_MAP[saved]?saved:"asuryani";
+  applySkin(saved);
+  // if the remembered army has its own datasheets, load them (passphrase cached this tab)
+  if(saved!=="asuryani" && ARMY_MAP[saved].data){ loadArmy(saved).catch(()=>{}); }
 }
 
 // ---------- boot ----------
