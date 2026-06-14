@@ -346,11 +346,28 @@ def main():
     la=[r for r in idx.roots if r.get("name","").strip().endswith("Legiones Astartes")]
     units=build_units(idx,[legion_root]+la)
 
-    out=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),"data_"+aid)
+    root=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out=os.path.join(root,"data_"+aid)
     os.makedirs(out,exist_ok=True)
-    json.dump(list(units.values()),open(os.path.join(out,"units.json"),"w"),indent=1)
-    json.dump(list(weapons.values()),open(os.path.join(out,"weapons.json"),"w"),indent=1)
+    unit_list=list(units.values()); weapon_list=list(weapons.values())
+    json.dump(unit_list,open(os.path.join(out,"units.json"),"w"),indent=1)
+    json.dump(weapon_list,open(os.path.join(out,"weapons.json"),"w"),indent=1)
     json.dump(glossary,open(os.path.join(out,"glossary.json"),"w"),indent=1)
+
+    # Assemble the single bundle the app loads (encrypted into app/data.<aid>.enc.js).
+    # slots/detachments are the shared core-rulebook HH3.0 ruleset (army-agnostic),
+    # reused from the Asuryani data/ dir. Keep this in step with build/bundle.py.
+    def shared(name):
+        return json.load(open(os.path.join(root,"data",name),encoding="utf-8"))
+    bundle={
+        "weapons":weapon_list,"wargearLists":{},
+        "slots":shared("slots.json"),"detachments":shared("detachments.json"),
+        "glossary":glossary,"units":unit_list,
+        "meta":{"name":f"{legion} — Horus Heresy 3.0","army":aid},
+    }
+    json.dump(bundle,open(os.path.join(out,"bundle.json"),"w"),indent=1)
+    print(f"  wrote bundle.json ({len(unit_list)} units) -> encrypt with "
+          f"build/encrypt_army.js to publish")
 
     from collections import Counter
     gterms=sum(len(v) for v in glossary.values())
