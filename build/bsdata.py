@@ -571,10 +571,16 @@ def main():
     weap_ids=set(weapons.keys())
     weap_name={sid:(r.get("Ranged Weapon") or r.get("Melee Weapon") or "") for sid,r in weapons.items()}
     gear_ids={slug(n) for n in glossary.get("wargear",{})}
-    # Liber-authored overlay (accurate wargear lists + per-unit loadout/rules/options)
+    # Liber-authored overlay (accurate wargear lists + per-unit loadout/rules/options).
+    # overlay_legion-common.json = the generic Legiones Astartes datasheets shared by ALL
+    # Legions; overlay_<aid>.json = this Legion's unique units (layered on top, it wins).
     root0=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    ov_path=os.path.join(root0,"build",f"overlay_{aid}.json")
-    overlay=json.load(open(ov_path,encoding="utf-8")) if os.path.exists(ov_path) else {}
+    def _load(name):
+        p=os.path.join(root0,"build",name)
+        return json.load(open(p,encoding="utf-8")) if os.path.exists(p) else {}
+    common=_load("overlay_legion-common.json"); legion=_load(f"overlay_{aid}.json")
+    overlay={"wargearLists":{**common.get("wargearLists",{}),**legion.get("wargearLists",{})},
+             "units":{**common.get("units",{}),**legion.get("units",{})}}
     # army units = Legiones Astartes common pool + this Legion's catalogue
     la=[r for r in idx.roots if r.get("name","").strip().endswith("Legiones Astartes")]
     wlists=dict(overlay.get("wargearLists",{}))  # overlay lists are authoritative

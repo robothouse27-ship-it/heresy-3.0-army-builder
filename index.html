@@ -429,6 +429,16 @@ table.kv td:first-child{color:var(--muted)}
   padding:5px 13px;font-size:11.5px;cursor:pointer;transition:.13s}
 .ptok:hover{border-color:var(--edge);color:var(--bone)}
 .ptok.on{background:#3a3014;border-color:var(--amber);color:var(--amber)}
+.statgrp{display:inline-flex;align-items:center;gap:2px}
+.ptnum{display:inline-flex;align-items:center;gap:5px;margin-left:5px;font-family:var(--font-mono);font-weight:600;color:var(--amber)}
+.ptn{width:24px;height:24px;line-height:1;border:1px solid var(--line);background:var(--panel2);color:var(--bone);
+  border-radius:6px;cursor:pointer;font-size:13px;display:inline-flex;align-items:center;justify-content:center}
+.ptn:hover{border-color:var(--accent);background:var(--accent-d)}.ptn:active{transform:scale(.9)}
+.preact{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:9px}
+.rpool{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-weight:600;font-size:16px;margin-right:6px}
+.rpool .rl{font-family:var(--font);font-weight:600;font-size:9.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+.rpool b{min-width:18px;text-align:center;color:var(--accent)}
+.ptok.rbtn.on{background:#10303a;border-color:#3ea0c0;color:#7fd4ee}
 @media(max-width:820px){
   main{grid-template-columns:1fr;grid-template-rows:1fr}
   .col.catalog{border-right:none}
@@ -963,12 +973,14 @@ function find(uid){let r=null;eachEntry(e=>{if(e.uid===uid)r=e;});return r;}
 // model/wound/status trackers, persisted per list so a game survives a reload.
 let MODE="build", PLAY={};
 const PLAY_LS="asuryani_playstate";
-const PLAY_TOKENS=["Pinned","Shaken","Spent"];
+const STATUSES=["Pinned","Stunned","Routed","Suppressed"];  // each toggles on, with an adjustable 1–3 level
 function playKey(){return R.name||"_current";}
 function loadPlay(){try{PLAY=(JSON.parse(localStorage.getItem(PLAY_LS)||"{}")[playKey()])||{};}catch(e){PLAY={};}}
 function savePlay(){try{const all=JSON.parse(localStorage.getItem(PLAY_LS)||"{}");all[playKey()]=PLAY;
   localStorage.setItem(PLAY_LS,JSON.stringify(all));}catch(e){}}
 function maxWounds(u){const w=(u.profiles&&u.profiles[0]&&u.profiles[0].stats.W);const n=typeof w==="number"?w:parseInt(w);return n>0?n:1;}
+// Reaction Allotment (rulebook p204): base 1 + bonus by the battle's points limit.
+function reactionAllotment(limit){limit=+limit||0;const bonus=limit>5000?3:limit>3500?2:limit>1500?1:0;return 1+bonus;}
 function unitWeapons(u){const names=new Set();Object.values(u.wargear||{}).flat().forEach(w=>names.add(w));
   return [...names].map(n=>weaponMap[slug(n)]).filter(Boolean);}
 function setMode(m){
@@ -989,6 +1001,7 @@ function playCard(e){
   const maxM=e.size||1, maxW=maxWounds(u);
   const st=PLAY[e.uid]||(PLAY[e.uid]={});
   if(st.models==null)st.models=maxM; if(st.wounds==null)st.wounds=maxW; if(!st.tokens)st.tokens={};
+  if(st.reacted==null)st.reacted=false;
   st.models=Math.max(0,Math.min(st.models,maxM)); st.wounds=Math.max(0,Math.min(st.wounds,maxW));
   const dead=st.models<=0;
   const keys=statHeaders(u.profiles);
@@ -1007,14 +1020,20 @@ function playCard(e){
   let rhtml="";
   if(srules.length) rhtml+=`<div class="psec">Rules</div><div class="pchips">${srules.map(term).join(", ")}</div>`;
   if(traits.length) rhtml+=`<div class="psec">Traits</div><div class="pchips">${traits.map(term).join(", ")}</div>`;
-  const toks=`<div class="ptoks">`+PLAY_TOKENS.map(t=>`<span class="ptok ${st.tokens[t]?'on':''}" data-ptok="${e.uid}:${t}">${t}</span>`).join("")+`</div>`;
+  const toks=`<div class="ptoks">`+STATUSES.map(name=>{
+    const v=st.tokens[name]; const on=!!v; const n=on?(typeof v==="number"?v:1):0;
+    return `<span class="statgrp"><span class="ptok ${on?'on':''}" data-ptok="${e.uid}:${name}">${name}</span>`+
+      (on?`<span class="ptnum" title="(X) modifier from the inflicting rule — applied as a −${n} penalty to the Cool/Leadership check (use the greatest, they don't stack)"><button class="ptn" data-ptn="${e.uid}|${name}|-">−</button>${n}<button class="ptn" data-ptn="${e.uid}|${name}|+">＋</button></span>`:``)+
+      `</span>`;
+  }).join("")+`</div>`;
+  const react=`<div class="preact"><button class="ptok rbtn ${st.reacted?'on':''}" data-react="${e.uid}">${st.reacted?'✓ Reaction used':'Reaction used'}</button></div>`;
   const trackers=`<div class="trackers">`+
     (maxM>1?trk("Models",st.models,maxM,"pm",e.uid):"")+
     ((maxW>1||maxM<=1)?trk("Wounds",st.wounds,maxW,"pw",e.uid):"")+`</div>`;
   return `<div class="pcard${dead?' dead':''}" data-uid="${e.uid}">
     <div class="phead"><div class="pn">${esc(u.name)}</div><div class="role">${esc(u.slot)}</div>
       <button class="sheetb" data-detail="${e.id}" title="Datasheet">☰</button></div>
-    <div class="pbody">${trackers}${stat}${whtml}${rhtml}${toks}</div></div>`;
+    <div class="pbody">${trackers}${stat}${whtml}${rhtml}${toks}${react}</div></div>`;
 }
 function renderPlay(){
   loadPlay();
@@ -1022,9 +1041,14 @@ function renderPlay(){
   const entries=allEntries();
   if(!entries.length){root.innerHTML=`<div class="empty">No units yet — switch to <b>Build</b> and add some, then come back to play.</div>`;return;}
   const alive=entries.filter(e=>!(PLAY[e.uid]&&PLAY[e.uid].models<=0)).length;
+  const army=PLAY.__army||(PLAY.__army={}); if(army.reactions==null)army.reactions=reactionAllotment(R.limit);
   root.innerHTML=`<div class="playbar"><span class="pt">⚔ Play Mode</span>
       <span class="sub">${R.name||"Untitled list"} · ${alive}/${entries.length} units active</span>
       <span class="grow"></span>
+      <span class="rpool" title="Army-wide Reaction Points: base 1 + bonus for ${R.limit||0} pts limit. Spend 1 per Reaction; ↻ resets for a new turn.">
+        <span class="rl">Reaction Pts</span>
+        <button class="ptn" data-arx="-">−</button><b>${army.reactions}</b><button class="ptn" data-arx="+">＋</button>
+        <button class="ptn rreset" data-arx="reset" title="New turn — reset to ${reactionAllotment(R.limit)}">↻</button></span>
       <button class="btn" id="playReset">Reset trackers</button></div>
     <div class="pgrid">${entries.map(playCard).join("")}</div>`;
   savePlay();
@@ -1048,7 +1072,17 @@ function bindPlay(){
     const e=find(uid);const mw=e?maxWounds(unitMap[e.id]):1;adjTrk(uid,"wounds",dir,mw,mw);});
   root.querySelectorAll("[data-ptok]").forEach(t=>t.onclick=()=>{const[uid,tok]=t.dataset.ptok.split(":");
     const st=PLAY[uid]||(PLAY[uid]={tokens:{}});if(!st.tokens)st.tokens={};
-    st.tokens[tok]=!st.tokens[tok];savePlay();renderPlay();});
+    st.tokens[tok]=st.tokens[tok]?false:1;savePlay();renderPlay();});  // toggle on at level 1
+  root.querySelectorAll("[data-ptn]").forEach(b=>b.onclick=()=>{const[uid,tok,dir]=b.dataset.ptn.split("|");
+    const st=PLAY[uid];if(!st||!st.tokens)return;let v=typeof st.tokens[tok]==="number"?st.tokens[tok]:1;
+    st.tokens[tok]=Math.max(1,Math.min(3,v+(dir==="+"?1:-1)));savePlay();renderPlay();});
+  root.querySelectorAll("[data-react]").forEach(b=>b.onclick=()=>{const uid=b.dataset.react;
+    const st=PLAY[uid]||(PLAY[uid]={});st.reacted=!st.reacted;savePlay();renderPlay();});
+  root.querySelectorAll("[data-arx]").forEach(b=>b.onclick=()=>{const army=PLAY.__army||(PLAY.__army={});
+    const op=b.dataset.arx;
+    if(op==="reset")army.reactions=reactionAllotment(R.limit);
+    else army.reactions=Math.max(0,Math.min(99,(army.reactions??0)+(op==="+"?1:-1)));
+    savePlay();renderPlay();});
   root.querySelectorAll("[data-detail]").forEach(b=>b.onclick=()=>showDetail(b.dataset.detail));
   const rb=root.querySelector("#playReset");
   if(rb)rb.onclick=()=>{if(confirm("Reset all unit trackers to full strength?")){PLAY={};savePlay();renderPlay();}};
@@ -1276,26 +1310,26 @@ const ARMIES=[
   A("aeldari","asuryani","Asuryani","#62d7b2","#0e6f58","Wraithbone & spirit-stone",{img:"Eldar_Rune.webp",bg:"#070b0e",bgGlow:"#0f2a2a"}),
   // Loyalist Astartes (Liber Astartes)
   A("loyalist","loyalist","Loyalist Astartes","#d8b35a","#6e5418","Imperial gold & midnight"),
-  A("loyalist","dark-angels","Dark Angels","#2f9e63","#12502f","The First, Caliban green"),
-  A("loyalist","white-scars","White Scars","#d4554a","#6e211a","Chogorian lightning"),
+  A("loyalist","dark-angels","Dark Angels","#2f9e63","#12502f","The First, Caliban green",{data:"app/data.dark-angels.enc.js"}),
+  A("loyalist","white-scars","White Scars","#d4554a","#6e211a","Chogorian lightning",{data:"app/data.white-scars.enc.js"}),
   A("loyalist","space-wolves","Space Wolves","#84b6d6","#2d5a78","Fenrisian storm-grey",{data:"app/data.space-wolves.enc.js"}),
-  A("loyalist","imperial-fists","Imperial Fists","#f0bf3e","#806012","Phalanx gold"),
-  A("loyalist","blood-angels","Blood Angels","#e23b3b","#7a1414","Baal crimson & gold"),
-  A("loyalist","iron-hands","Iron Hands","#aab2c0","#474f5b","Medusan black iron"),
-  A("loyalist","ultramarines","Ultramarines","#3f72d6","#1c3a82","Macragge blue & gold"),
-  A("loyalist","salamanders","Salamanders","#2aa85c","#114e2a","Nocturne green & flame"),
-  A("loyalist","raven-guard","Raven Guard","#c3c9d4","#3c434f","Deliverance shadow"),
+  A("loyalist","imperial-fists","Imperial Fists","#f0bf3e","#806012","Phalanx gold",{data:"app/data.imperial-fists.enc.js"}),
+  A("loyalist","blood-angels","Blood Angels","#e23b3b","#7a1414","Baal crimson & gold",{data:"app/data.blood-angels.enc.js"}),
+  A("loyalist","iron-hands","Iron Hands","#aab2c0","#474f5b","Medusan black iron",{data:"app/data.iron-hands.enc.js"}),
+  A("loyalist","ultramarines","Ultramarines","#3f72d6","#1c3a82","Macragge blue & gold",{data:"app/data.ultramarines.enc.js"}),
+  A("loyalist","salamanders","Salamanders","#2aa85c","#114e2a","Nocturne green & flame",{data:"app/data.salamanders.enc.js"}),
+  A("loyalist","raven-guard","Raven Guard","#c3c9d4","#3c434f","Deliverance shadow",{data:"app/data.raven-guard.enc.js"}),
   // Traitor Astartes (Liber Hereticus)
   A("traitor","traitor","Traitor Astartes","#c0392b","#5e1810","Crimson, black & brass"),
-  A("traitor","sons-of-horus","Sons of Horus","#4aa389","#155848","Cthonian sea-green"),
-  A("traitor","death-guard","Death Guard","#b3bd72","#565c2f","Barbaran rot & rust"),
-  A("traitor","emperors-children","Emperor's Children","#b06fd6","#57298a","Chemos purple & gold"),
-  A("traitor","iron-warriors","Iron Warriors","#adb3bd","#474d57","Olympian iron & hazard"),
-  A("traitor","night-lords","Night Lords","#5d72d4","#232c70","Nostraman midnight"),
-  A("traitor","world-eaters","World Eaters","#d23b3b","#6e1414","Blood & brass"),
-  A("traitor","thousand-sons","Thousand Sons","#d8492e","#7a2010","Prosperan crimson & gold"),
-  A("traitor","word-bearers","Word Bearers","#9e3b3b","#4e1a1a","Colchisian dark red"),
-  A("traitor","alpha-legion","Alpha Legion","#2bb0a6","#115a54","Hydra turquoise & scales"),
+  A("traitor","sons-of-horus","Sons of Horus","#4aa389","#155848","Cthonian sea-green",{data:"app/data.sons-of-horus.enc.js"}),
+  A("traitor","death-guard","Death Guard","#b3bd72","#565c2f","Barbaran rot & rust",{data:"app/data.death-guard.enc.js"}),
+  A("traitor","emperors-children","Emperor's Children","#b06fd6","#57298a","Chemos purple & gold",{data:"app/data.emperors-children.enc.js"}),
+  A("traitor","iron-warriors","Iron Warriors","#adb3bd","#474d57","Olympian iron & hazard",{data:"app/data.iron-warriors.enc.js"}),
+  A("traitor","night-lords","Night Lords","#5d72d4","#232c70","Nostraman midnight",{data:"app/data.night-lords.enc.js"}),
+  A("traitor","world-eaters","World Eaters","#d23b3b","#6e1414","Blood & brass",{data:"app/data.world-eaters.enc.js"}),
+  A("traitor","thousand-sons","Thousand Sons","#d8492e","#7a2010","Prosperan crimson & gold",{data:"app/data.thousand-sons.enc.js"}),
+  A("traitor","word-bearers","Word Bearers","#9e3b3b","#4e1a1a","Colchisian dark red",{data:"app/data.word-bearers.enc.js"}),
+  A("traitor","alpha-legion","Alpha Legion","#2bb0a6","#115a54","Hydra turquoise & scales",{data:"app/data.alpha-legion.enc.js"}),
   // Generic
   A("generic","neutral","Neutral","#8fb4d6","#33536f","Unaligned steel")
 ];

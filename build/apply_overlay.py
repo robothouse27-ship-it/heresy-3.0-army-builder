@@ -10,9 +10,16 @@ import json, os, sys
 
 aid = sys.argv[1] if len(sys.argv) > 1 else "space-wolves"
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ov = json.load(open(os.path.join(root, "build", f"overlay_{aid}.json"), encoding="utf-8"))
-ov_units = ov.get("units", {})
-ov_lists = ov.get("wargearLists", {})
+
+def _load(name):
+    p = os.path.join(root, "build", name)
+    return json.load(open(p, encoding="utf-8")) if os.path.exists(p) else {}
+
+# shared generic Legiones Astartes datasheets + this Legion's unique units (legion wins)
+_common = _load("overlay_legion-common.json")
+_legion = _load(f"overlay_{aid}.json")
+ov_units = {**_common.get("units", {}), **_legion.get("units", {})}
+ov_lists = {**_common.get("wargearLists", {}), **_legion.get("wargearLists", {})}
 
 # scalar/array fields copied verbatim from the overlay onto each unit
 DIRECT = ["lore", "wargear", "traits", "options", "composition", "sizeRules",
