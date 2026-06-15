@@ -1,0 +1,113 @@
+{
+  "_source": "Hand-authored from Warhammer: The Horus Heresy 3rd Ed — Liber Astartes (Loyalist Legiones Astartes Army Book). Wargear Lists p21; datasheets at the printed page noted per unit. Overrides BSData-derived wargear/specialRules/traits/options for accuracy.",
+  "wargearLists": {
+    "legion-officer-wargear-list": {"name": "Legion Officer Wargear List", "items": [
+      {"name": "Bolt pistol", "points": 0}, {"name": "Chainsword", "points": 0},
+      {"name": "Bolter", "points": 5}, {"name": "Volkite serpenta", "points": 5},
+      {"name": "Hand flamer", "points": 5}, {"name": "Plasma pistol", "points": 5},
+      {"name": "Disintegrator pistol", "points": 5}, {"name": "Chainaxe", "points": 0},
+      {"name": "Charnabal sabre", "points": 5}, {"name": "Power weapon", "points": 10},
+      {"name": "Power fist", "points": 15}, {"name": "Lightning claw", "points": 10},
+      {"name": "Thunder hammer", "points": 15}, {"name": "Combat shield", "points": 5},
+      {"name": "Boarding shield", "points": 10}
+    ]},
+    "legion-terminator-melee-weapons-list": {"name": "Legion Terminator Melee Weapons List", "items": [
+      {"name": "Lightning claw", "points": 5}, {"name": "Power fist", "points": 10},
+      {"name": "Chainfist", "points": 10}, {"name": "Thunder hammer", "points": 10}
+    ]},
+    "legion-sergeant-melee-weapons-list": {"name": "Legion Sergeant Melee Weapons List", "items": [
+      {"name": "Chainsword", "points": 0}, {"name": "Chainaxe", "points": 0},
+      {"name": "Charnabal sabre", "points": 5}, {"name": "Power weapon", "points": 5},
+      {"name": "Thunder hammer", "points": 15}, {"name": "Power fist", "points": 15},
+      {"name": "Lightning claw", "points": 10}
+    ]},
+    "legion-pistols-list": {"name": "Legion Pistols List", "items": [
+      {"name": "Plasma pistol", "points": 5}, {"name": "Hand flamer", "points": 5},
+      {"name": "Volkite serpenta", "points": 5}
+    ]},
+    "legion-combi-weapons-list": {"name": "Legion Combi-weapons List", "items": [
+      {"name": "Combi-bolter", "points": 5}, {"name": "Combi-flamer", "points": 10},
+      {"name": "Combi-melta", "points": 10}, {"name": "Combi-plasma", "points": 10},
+      {"name": "Combi-volkite", "points": 10}, {"name": "Combi-grenade", "points": 10},
+      {"name": "Combi-disintegrator", "points": 10}, {"name": "Combi-grav", "points": 10}
+    ]},
+    "legion-special-weapons-list": {"name": "Legion Special Weapons List", "items": [
+      {"name": "Flamer", "points": 5}, {"name": "Plasma gun", "points": 10},
+      {"name": "Meltagun", "points": 15}, {"name": "Volkite charger", "points": 5},
+      {"name": "Volkite caliver", "points": 10}, {"name": "Rotor cannon", "points": 10}
+    ]},
+    "legion-equipment-list": {"name": "Legion Equipment List", "items": [
+      {"name": "Nuncio-vox", "points": 10}, {"name": "Augury scanner", "points": 10}
+    ]},
+    "legion-heavy-weapons-list": {"name": "Legion Heavy Weapons List", "items": [
+      {"name": "Heavy bolter", "points": 10}, {"name": "Heavy flamer", "points": 10},
+      {"name": "Autocannon", "points": 20}, {"name": "Missile launcher", "points": 15},
+      {"name": "Multi-melta", "points": 20}, {"name": "Plasma cannon", "points": 20},
+      {"name": "Volkite culverin", "points": 15}, {"name": "Lascannon", "points": 25}
+    ]},
+    "grey-slayer-weapons-list": {"name": "Grey Slayer Weapons List", "items": [
+      {"name": "Heavy chainsword", "points": 2}, {"name": "Power fist", "points": 20},
+      {"name": "Lightning claw", "points": 10}
+    ]}
+  },
+  "units": {
+    "tactical-squad": {
+      "_page": "Liber Astartes p59",
+      "wargear": {
+        "Legionary": ["Bolter", "Bolt pistol", "Frag grenades", "Krak grenades"],
+        "Sergeant": ["Bolter", "Bolt pistol", "Frag grenades", "Krak grenades"]
+      },
+      "specialRules": ["Fury of the Legion", "Line (2)"],
+      "options": [
+        "The Sergeant may exchange their bolter and/or bolt pistol — select from the Legion Sergeant Melee Weapons List",
+        "The Sergeant may exchange their bolt pistol — select from the Legion Pistols List",
+        "The Sergeant may exchange their bolter — select from the Legion Combi-weapons List",
+        "The Sergeant may take melta bombs for +10 points",
+        "One Legionary may take a Vexilla for +10 points",
+        "Up to two Legionaries may each select from the Legion Equipment List",
+        "Any model with a bolter may take a Bayonet for +1 points",
+        "Any model with a bolter may take a Chain bayonet for +2 points"
+      ]
+    },
+    "grey-slayer-pack": {
+      "_page": "Liber Astartes p177",
+      "wargear": {
+        "Huscarl": ["Bolt pistol", "Fenrisian axe", "Combat shield", "Frag grenades", "Krak grenades"],
+        "Grey Slayer": ["Bolt pistol", "Fenrisian axe", "Combat shield", "Frag grenades", "Krak grenades"]
+      },
+      "specialRules": ["Line (1)"],
+      "options": [
+        "The Huscarl may exchange their Fenrisian axe — select from the Legion Sergeant Melee Weapons List",
+        "The Huscarl may exchange their bolt pistol — select from the Legion Pistols List",
+        "The Huscarl may take a Bayonet for +1 points",
+        "The Huscarl may take a Chain bayonet for +2 points",
+        "Any model may select from the Grey Slayer Weapons List",
+        "One in five Grey Slayers may exchange their bolt pistol — select from the Legion Pistols List",
+        "One Grey Slayer may take a Vexilla for +10 points",
+        "Up to two Grey Slayers may each select from the Legion Equipment List"
+      ]
+    },
+    "praetor": {
+      "_page": "Liber Astartes p23",
+      "wargear": {
+        "Praetor": ["Bolter", "Bolt pistol", "Frag grenades", "Krak grenades"]
+      },
+      "specialRules": [],
+      "traits": ["Master of the Legion"],
+      "options": [
+        "The Praetor may exchange their bolter and/or bolt pistol — select from the Legion Officer Wargear List",
+        "The Praetor may take a Paragon blade for +15 points",
+        "The Praetor may take an Archaeotech pistol for +15 points",
+        "The Praetor may exchange their bolter — select from the Legion Combi-weapons List",
+        "The Praetor may take an Astartes shotgun for +2 points",
+        "The Praetor may take a Volkite charger for +2 points",
+        "The Praetor may take a pair of lightning claws for +20 points",
+        "The Praetor may take melta bombs for +5 points",
+        "The Praetor may take a Bayonet for +1 points",
+        "The Praetor may take a Chain bayonet for +2 points",
+        "The Praetor may take a Cyber-familiar for +10 points",
+        "The Praetor may be upgraded with a Jump Pack for +20 points"
+      ]
+    }
+  }
+}

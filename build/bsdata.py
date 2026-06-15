@@ -462,9 +462,12 @@ VARIANT_PATTERNS = [
     (r"^(.+) [Ii]n Saturnine Terminator Armour$", "In Saturnine Terminator Armour"),
     (r"^(.+) [Ii]n Terminator Armour$", "In Terminator Armour"),
 ]
-def collapse_variants(units):
+def collapse_variants(units, locked=None):
     """Fold Mounted/Jump Pack/Terminator consul variants into their base unit
-    as priced options, when a base unit exists in the same slot."""
+    as priced options, when a base unit exists in the same slot. Bases in `locked`
+    (Liber-authored units) keep their hand-written options — the variant is still
+    removed, to be re-authored as its own datasheet later."""
+    locked=locked or set()
     by_name={u["name"]:u for u in units.values()}
     drop=set()
     for sid,u in list(units.items()):
@@ -473,10 +476,11 @@ def collapse_variants(units):
             if not m: continue
             base=by_name.get(m.group(1).strip())
             if base and base["slot"]==u["slot"] and base["id"]!=u["id"]:
-                delta=u["pointsValue"]-base["pointsValue"]
-                opt=f"{label} (+{delta} points)" if delta>0 else label
-                base.setdefault("options",[])
-                if opt not in base["options"]: base["options"].append(opt)
+                if base["id"] not in locked:
+                    delta=u["pointsValue"]-base["pointsValue"]
+                    opt=f"{label} (+{delta} points)" if delta>0 else label
+                    base.setdefault("options",[])
+                    if opt not in base["options"]: base["options"].append(opt)
                 drop.add(sid)
             break
     for sid in drop: units.pop(sid,None)
@@ -497,10 +501,11 @@ def nested_unit_ids(army_roots):
 # all units (pass 2, once the equipment-list shape is reviewed in-app).
 PILOT_WARGEAR = {"tactical-squad","grey-slayer-pack","praetor"}
 
-def build_units(idx, army_roots, weap_ids=None, gear_ids=None, wlists=None, weap_name=None):
+def build_units(idx, army_roots, weap_ids=None, gear_ids=None, wlists=None, weap_name=None, overlay=None):
     units={}
     weap_ids=weap_ids or set(); gear_ids=gear_ids or set(); weap_name=weap_name or {}
     wlists=wlists if wlists is not None else {}
+    overlay_units=(overlay or {}).get("units", {})
     nested=nested_unit_ids(army_roots)
     for root in army_roots:
         for entry in root.iter(NS+"selectionEntry"):
@@ -520,13 +525,14 @@ def build_units(idx, army_roots, weap_ids=None, gear_ids=None, wlists=None, weap
             if sid in units: continue
             pts,comp,size=squad_economics(entry)
             if not comp: comp=composition(entry,idx)
-            wopts=[]
-            if not PILOT_WARGEAR or sid in PILOT_WARGEAR:
-                # decluttered datasheet (Asuryani-style): per-model default loadout +
-                # the unit's own rules; the full swap menu lives in the dropdowns.
-                wargear={k:v for k,v in default_loadout(entry,idx,weap_ids,gear_ids,weap_name).items() if v}
-                sr={"_":unit_rules(entry,idx)}
-                wopts=harvest_wargear(entry,idx,weap_ids,gear_ids,wlists,name)
+            wopts=[]; traits=[]
+            if sid in overlay_units:
+                # authoritative data hand-transcribed from the Liber Astartes datasheet
+                ov=overlay_units[sid]
+                wargear=ov.get("wargear",{})
+                sr={"_":ov.get("specialRules",[])}
+                traits=ov.get("traits",[])
+                wopts=ov.get("options",[])
             else:
                 we,wg,rules=collect_equipment(entry,idx,set())
                 wargear={}
@@ -539,9 +545,9 @@ def build_units(idx, army_roots, weap_ids=None, gear_ids=None, wlists=None, weap
                 "composition":comp,
                 "baseCost":f"{pts} points" if pts else "","pointsValue":pts,
                 "sizeRules":size,"lore":[],"profiles":profs,
-                "wargear":wargear,"specialRules":sr,"traits":[],"types":{},"options":wopts,
+                "wargear":wargear,"specialRules":sr,"traits":traits,"types":{},"options":wopts,
             }
-    folded=collapse_variants(units)
+    folded=collapse_variants(units, set(overlay_units))
     if folded: print(f"  collapsed {folded} variant units into base + options")
     return units
 
@@ -562,10 +568,16 @@ def main():
     weap_ids=set(weapons.keys())
     weap_name={sid:(r.get("Ranged Weapon") or r.get("Melee Weapon") or "") for sid,r in weapons.items()}
     gear_ids={slug(n) for n in glossary.get("wargear",{})}
+    # Liber-authored overlay (accurate wargear lists + per-unit loadout/rules/options)
+    root0=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ov_path=os.path.join(root0,"build",f"overlay_{aid}.json")
+    overlay=json.load(open(ov_path,encoding="utf-8")) if os.path.exists(ov_path) else {}
     # army units = Legiones Astartes common pool + this Legion's catalogue
     la=[r for r in idx.roots if r.get("name","").strip().endswith("Legiones Astartes")]
-    wlists={}
-    units=build_units(idx,[legion_root]+la,weap_ids,gear_ids,wlists,weap_name)
+    wlists=dict(overlay.get("wargearLists",{}))  # overlay lists are authoritative
+    units=build_units(idx,[legion_root]+la,weap_ids,gear_ids,wlists,weap_name,overlay)
+    if overlay: print(f"  applied Liber overlay: {len(overlay.get('units',{}))} units, "
+                      f"{len(overlay.get('wargearLists',{}))} wargear lists")
 
     root=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     out=os.path.join(root,"data_"+aid)
