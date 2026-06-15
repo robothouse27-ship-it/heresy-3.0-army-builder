@@ -525,7 +525,7 @@ def build_units(idx, army_roots, weap_ids=None, gear_ids=None, wlists=None, weap
             if sid in units: continue
             pts,comp,size=squad_economics(entry)
             if not comp: comp=composition(entry,idx)
-            wopts=[]; traits=[]
+            wopts=[]; traits=[]; lore=[]
             if sid in overlay_units:
                 # authoritative data hand-transcribed from the Liber Astartes datasheet
                 ov=overlay_units[sid]
@@ -533,6 +533,9 @@ def build_units(idx, army_roots, weap_ids=None, gear_ids=None, wlists=None, weap
                 sr={"_":ov.get("specialRules",[])}
                 traits=ov.get("traits",[])
                 wopts=ov.get("options",[])
+                lore=ov.get("lore",[])
+                if "composition" in ov: comp=ov["composition"]
+                if "sizeRules" in ov: size=ov["sizeRules"]
             else:
                 we,wg,rules=collect_equipment(entry,idx,set())
                 wargear={}
@@ -544,7 +547,7 @@ def build_units(idx, army_roots, weap_ids=None, gear_ids=None, wlists=None, weap
                 "id":sid,"name":name,"slot":find_slot(entry,idx) or "Unsorted",
                 "composition":comp,
                 "baseCost":f"{pts} points" if pts else "","pointsValue":pts,
-                "sizeRules":size,"lore":[],"profiles":profs,
+                "sizeRules":size,"lore":lore,"profiles":profs,
                 "wargear":wargear,"specialRules":sr,"traits":traits,"types":{},"options":wopts,
             }
     folded=collapse_variants(units, set(overlay_units))

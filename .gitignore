@@ -12,6 +12,12 @@ app/data.*.js
 !app/data.enc.js
 !app/data.*.enc.js
 
+# Hand-authored overlays hold readable datasheet text (lore/options/rules) — keep private
+build/overlay_*.json
+
+# Local notes that contain the passphrase — never publish
+APP_LINKS.md
+
 # Large reference rulebooks (~700MB)
 *.pdf
 
