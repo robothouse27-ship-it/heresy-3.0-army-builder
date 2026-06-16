@@ -2,7 +2,7 @@
    Precaches the app shell + encrypted rules bundle so the app installs and runs
    fully offline. Navigation = network-first (so a redeploy shows up), static
    assets = cache-first. Bump CACHE to force clients onto a new build. */
-const CACHE = "asuryani-v8";
+const CACHE = "asuryani-v9";
 const ASSETS = [
   "./", "./index.html", "./manifest.webmanifest",
   "./app/data.enc.js", "./Eldar_Rune.webp",

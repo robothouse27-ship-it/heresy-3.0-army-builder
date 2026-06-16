@@ -260,6 +260,8 @@ main{display:grid;grid-template-columns:minmax(300px,1fr) minmax(360px,1.25fr);o
 .uprow{display:flex;align-items:center;gap:10px;margin-top:6px}
 .uprow .upn{font-size:13px;flex:1}
 .uprow .upp{color:var(--dim);font-size:11px}
+.optresid{margin:6px 0 2px;padding-left:10px;border-left:2px solid var(--line)}
+.optresid div{font-size:11px;color:var(--dim);margin:3px 0;line-height:1.35}
 .cfg select,.cfg input[type=number]{background:var(--panel2);border:1px solid var(--line);color:var(--bone);
   border-radius:8px;padding:7px 9px;font-size:12.5px;transition:.15s}
 .cfg select:focus,.cfg input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--glow)}
@@ -660,7 +662,7 @@ function parseModel(u){
         : (up.pickOne || (choices.length>1 && upLimitIsOne(up.limit))) ? "pick"
         : "step";
       return {model:up.model||"Squad", replaces:up.replaces||"", limit:up.limit,
-              list:up.list||"", choices, note:up.note||"", kind, single};
+              list:up.list||"", extraChoices:up.extraChoices||[], choices, note:up.note||"", kind, single};
     });
     return out;
   }
@@ -725,7 +727,8 @@ function upRow(e,up,i){
   const uid=e.uid, sel=e.ups[i]||[], cap=upCap(up,e.size);
   const lbl=md=>`<label>${md}</label>`;
   if(up.kind==="list"){
-    const L=G.wargearLists[slug(up.list)], items=L?L.items:[];
+    const L=G.wargearLists[slug(up.list)];
+    const items=(L?L.items:[]).concat((up.extraChoices||[]).map(c=>({name:c.name,points:c.pts})));
     if(!cap) return "";
     let out="";
     for(let j=0;j<cap;j++){ const cur=sel[j];
@@ -744,7 +747,7 @@ function upRow(e,up,i){
   // step: single choice -> checkbox (cap 1) or one stepper; multi choice -> shared-pool box
   if(up.single){ const c=up.choices[0], name=(up.replaces?up.replaces+' → ':'')+c.name;
     if(cap<=1) return `<label class="optck"><input type="checkbox" data-uchk="${uid}:${i}" ${sel[0]?'checked':''}>
-      <span>${name}</span><span class="pts">+${c.pts}</span></label>`;
+      <span>${name}${up.note?` <small style="color:var(--dim)">· ${up.note}</small>`:''}</span><span class="pts">+${c.pts}</span></label>`;
     return `<div class="cfg">${lbl(name)}<div class="stepper">
       <button data-udec="${uid}:${i}:0">−</button><span class="n">${sel[0]||0}</span><button data-uinc="${uid}:${i}:0">+</button></div>
       <span style="color:var(--dim);font-size:11px">+${c.pts} ea · max ${cap}</span></div>`;
@@ -948,6 +951,9 @@ function entryHTML(e,p){
       <span style="color:var(--dim);font-size:11px">${m.baseCount}–${m.baseCount+m.maxExtra} · +${m.perModel}/model</span></div>`;
   }
   cfg+=renderUpgrades(e,m);
+  // options the converter couldn't structure stay visible as read-only notes
+  if(m.upgrades&&m.upgrades.length&&u.options&&u.options.length)
+    cfg+=`<div class="optresid">${u.options.map(o=>`<div>${o}</div>`).join("")}</div>`;
   // group the wargear choices under the model they belong to (Sergeant, Squad…)
   const groups={}, order=[];
   const bucket=md=>{ if(!groups[md]){groups[md]=[]; order.push(md);} return groups[md]; };
@@ -1308,7 +1314,7 @@ function showDetail(id){
     html+=`<div class="sec"><h3>Type</h3>`+Object.entries(u.types).map(([k,v])=>
       `<div style="font-size:12px"><span style="color:var(--muted)">${k==='_'?'':k+': '}</span>${Array.isArray(v)?v.join(', '):v}</div>`).join("")+`</div>`;
   }
-  if(u.options&&u.options.length&&!(u.upgrades&&u.upgrades.length)) html+=`<div class="sec"><h3>Options</h3><ul>${u.options.map(o=>`<li>${o}</li>`).join("")}</ul></div>`;
+  if(u.options&&u.options.length) html+=`<div class="sec"><h3>Options</h3><ul>${u.options.map(o=>`<li>${o}</li>`).join("")}</ul></div>`;
   if(u.lore&&u.lore.length) html+=`<div class="sec"><h3>Lore</h3><div class="lore">${u.lore.join("\n\n")}</div></div>`;
   document.getElementById("sheet").innerHTML=html;
   document.getElementById("modal").classList.add("show");
