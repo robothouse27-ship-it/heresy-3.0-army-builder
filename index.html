@@ -104,11 +104,35 @@ header.top{position:relative;display:flex;align-items:center;gap:12px;padding:9p
   background:linear-gradient(180deg,var(--panel2),var(--panel));
   box-shadow:0 1px 0 #ffffff06 inset, 0 6px 18px #0006}
 header.top .title{font-size:15px;font-weight:600;letter-spacing:.8px;white-space:nowrap;
-  font-family:var(--font-display);display:flex;align-items:center;gap:8px}
+  font-family:var(--font-display);display:flex;align-items:center;gap:8px;
+  background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:9px;transition:.15s var(--ease)}
+header.top .title:hover{background:var(--glow)}
 header.top .title b{color:var(--accent);font-weight:600}
 header.top .title .crest{display:inline-flex;align-items:center;color:var(--accent);font-size:17px;
   filter:drop-shadow(0 0 8px var(--glow-strong))}
 header.top .title .crest img{height:22px;width:auto;display:block}
+header.top .title .rulescue{color:var(--dim);font-size:10px;transition:.2s var(--ease)}
+#app.rules-open header.top .title .rulescue{color:var(--accent);transform:rotate(180deg)}
+/* Army Special Rules panel */
+.armyrules{background:linear-gradient(180deg,var(--panel2),var(--panel));
+  border-bottom:1px solid var(--line);box-shadow:0 8px 24px #0007 inset, 0 6px 18px #0005;
+  padding:18px 22px 22px;animation:arslide .22s var(--ease)}
+.armyrules[hidden]{display:none}
+@keyframes arslide{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+.armyrules .arhdr{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.armyrules .arcrest{display:inline-flex;align-items:center;color:var(--accent);font-size:26px;
+  filter:drop-shadow(0 0 12px var(--glow-strong))}
+.armyrules .arcrest img{height:34px;width:auto;display:block}
+.armyrules h2{font-family:var(--font-display);font-size:19px;letter-spacing:.6px;color:var(--accent);
+  font-weight:600;margin:0;flex:1}
+.armyrules .x{background:none;border:none;color:var(--muted);font-size:22px;line-height:1;cursor:pointer;padding:2px 6px}
+.armyrules .x:hover{color:var(--accent)}
+.armyrules .arbody{max-width:760px;color:var(--bone);font-size:13.5px;line-height:1.62}
+.armyrules .arbody .rule{margin:0 0 14px}
+.armyrules .arbody .rname{font-family:var(--font-display);color:var(--amber);font-size:14px;
+  letter-spacing:.4px;margin-bottom:3px}
+.armyrules .arbody p{margin:0 0 8px}
+.armyrules .arbody .empty{color:var(--dim);font-style:italic}
 header.top .grow{flex:1}
 .field{display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.4px;
   text-transform:uppercase;color:var(--muted)}
@@ -156,6 +180,9 @@ header.top .grow{flex:1}
 .armrow .gem{width:14px;height:14px;border-radius:50%;flex:none;
   background:radial-gradient(circle at 35% 30%,#fff9,var(--g) 52%,var(--gd));
   box-shadow:0 0 9px color-mix(in srgb,var(--g) 55%,transparent)}
+.armrow .armcrest{width:22px;height:22px;flex:none;display:inline-flex;align-items:center;justify-content:center;
+  color:var(--g);font-size:16px;filter:drop-shadow(0 0 5px color-mix(in srgb,var(--g) 50%,transparent))}
+.armrow .armcrest img{max-width:22px;max-height:22px;width:auto;height:auto;display:block;border-radius:3px}
 .armrow .al{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
 .armrow .an{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .armrow .as{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -512,7 +539,7 @@ table.kv td:first-child{color:var(--muted)}
 
 <div id="app">
   <header class="top">
-    <div class="title"><span class="crest" id="crest"><img src="Eldar_Rune.webp" alt=""></span> <b id="armyName">Asuryani</b></div>
+    <button class="title" id="armyTitle" title="Army special rules"><span class="crest" id="crest"><img src="Eldar_Rune.webp" alt=""></span> <b id="armyName">Asuryani</b><span class="rulescue" id="rulesCue">▾</span></button>
     <div class="modeseg" id="modeSeg">
       <button data-mode="build" class="on">Build</button>
       <button data-mode="play">Play</button>
@@ -540,6 +567,14 @@ table.kv td:first-child{color:var(--muted)}
     </div>
     <input id="fileIn" type="file" accept="application/json" hidden>
   </header>
+  <section id="armyRules" class="armyrules" hidden>
+    <div class="arhdr">
+      <span class="arcrest" id="arCrest"></span>
+      <h2 id="arName">Army Special Rules</h2>
+      <button class="x" id="arClose" title="Close">×</button>
+    </div>
+    <div class="arbody" id="arBody"></div>
+  </section>
   <nav class="tabs" id="tabs">
     <button data-tab="catalog" class="active"><i></i>Units</button>
     <button data-tab="roster">Roster<span class="badge" id="tabBadge"></span></button>
@@ -1567,26 +1602,26 @@ const ARMIES=[
   A("aeldari","asuryani","Asuryani","#62d7b2","#0e6f58","Wraithbone & spirit-stone",{img:"Eldar_Rune.webp",bg:"#070b0e",bgGlow:"#0f2a2a"}),
   // Loyalist Astartes (Liber Astartes)
   A("loyalist","loyalist","Loyalist Astartes","#d8b35a","#6e5418","Imperial gold & midnight"),
-  A("loyalist","dark-angels","Dark Angels","#2f9e63","#12502f","The First, Caliban green",{data:"app/data.dark-angels.enc.js"}),
-  A("loyalist","white-scars","White Scars","#d4554a","#6e211a","Chogorian lightning",{data:"app/data.white-scars.enc.js"}),
-  A("loyalist","space-wolves","Space Wolves","#84b6d6","#2d5a78","Fenrisian storm-grey",{data:"app/data.space-wolves.enc.js"}),
-  A("loyalist","imperial-fists","Imperial Fists","#f0bf3e","#806012","Phalanx gold",{data:"app/data.imperial-fists.enc.js"}),
-  A("loyalist","blood-angels","Blood Angels","#e23b3b","#7a1414","Baal crimson & gold",{data:"app/data.blood-angels.enc.js"}),
-  A("loyalist","iron-hands","Iron Hands","#aab2c0","#474f5b","Medusan black iron",{data:"app/data.iron-hands.enc.js"}),
-  A("loyalist","ultramarines","Ultramarines","#3f72d6","#1c3a82","Macragge blue & gold",{data:"app/data.ultramarines.enc.js"}),
-  A("loyalist","salamanders","Salamanders","#2aa85c","#114e2a","Nocturne green & flame",{data:"app/data.salamanders.enc.js"}),
-  A("loyalist","raven-guard","Raven Guard","#c3c9d4","#3c434f","Deliverance shadow",{data:"app/data.raven-guard.enc.js"}),
+  A("loyalist","dark-angels","Dark Angels","#2f9e63","#12502f","The First, Caliban green",{data:"app/data.dark-angels.enc.js",crestImg:"app/crests/dark-angels.png"}),
+  A("loyalist","white-scars","White Scars","#d4554a","#6e211a","Chogorian lightning",{data:"app/data.white-scars.enc.js",crestImg:"app/crests/white-scars.png"}),
+  A("loyalist","space-wolves","Space Wolves","#84b6d6","#2d5a78","Fenrisian storm-grey",{data:"app/data.space-wolves.enc.js",crestImg:"app/crests/space-wolves.png"}),
+  A("loyalist","imperial-fists","Imperial Fists","#f0bf3e","#806012","Phalanx gold",{data:"app/data.imperial-fists.enc.js",crestImg:"app/crests/imperial-fists.png"}),
+  A("loyalist","blood-angels","Blood Angels","#e23b3b","#7a1414","Baal crimson & gold",{data:"app/data.blood-angels.enc.js",crestImg:"app/crests/blood-angels.png"}),
+  A("loyalist","iron-hands","Iron Hands","#aab2c0","#474f5b","Medusan black iron",{data:"app/data.iron-hands.enc.js",crestImg:"app/crests/iron-hands.png"}),
+  A("loyalist","ultramarines","Ultramarines","#3f72d6","#1c3a82","Macragge blue & gold",{data:"app/data.ultramarines.enc.js",crestImg:"app/crests/ultramarines.png"}),
+  A("loyalist","salamanders","Salamanders","#2aa85c","#114e2a","Nocturne green & flame",{data:"app/data.salamanders.enc.js",crestImg:"app/crests/salamanders.png"}),
+  A("loyalist","raven-guard","Raven Guard","#c3c9d4","#3c434f","Deliverance shadow",{data:"app/data.raven-guard.enc.js",crestImg:"app/crests/raven-guard.png"}),
   // Traitor Astartes (Liber Hereticus)
   A("traitor","traitor","Traitor Astartes","#c0392b","#5e1810","Crimson, black & brass"),
-  A("traitor","sons-of-horus","Sons of Horus","#4aa389","#155848","Cthonian sea-green",{data:"app/data.sons-of-horus.enc.js"}),
-  A("traitor","death-guard","Death Guard","#b3bd72","#565c2f","Barbaran rot & rust",{data:"app/data.death-guard.enc.js"}),
-  A("traitor","emperors-children","Emperor's Children","#b06fd6","#57298a","Chemos purple & gold",{data:"app/data.emperors-children.enc.js"}),
-  A("traitor","iron-warriors","Iron Warriors","#adb3bd","#474d57","Olympian iron & hazard",{data:"app/data.iron-warriors.enc.js"}),
-  A("traitor","night-lords","Night Lords","#5d72d4","#232c70","Nostraman midnight",{data:"app/data.night-lords.enc.js"}),
-  A("traitor","world-eaters","World Eaters","#d23b3b","#6e1414","Blood & brass",{data:"app/data.world-eaters.enc.js"}),
-  A("traitor","thousand-sons","Thousand Sons","#d8492e","#7a2010","Prosperan crimson & gold",{data:"app/data.thousand-sons.enc.js"}),
-  A("traitor","word-bearers","Word Bearers","#9e3b3b","#4e1a1a","Colchisian dark red",{data:"app/data.word-bearers.enc.js"}),
-  A("traitor","alpha-legion","Alpha Legion","#2bb0a6","#115a54","Hydra turquoise & scales",{data:"app/data.alpha-legion.enc.js"}),
+  A("traitor","sons-of-horus","Sons of Horus","#4aa389","#155848","Cthonian sea-green",{data:"app/data.sons-of-horus.enc.js",crestImg:"app/crests/sons-of-horus.png"}),
+  A("traitor","death-guard","Death Guard","#b3bd72","#565c2f","Barbaran rot & rust",{data:"app/data.death-guard.enc.js",crestImg:"app/crests/death-guard.png"}),
+  A("traitor","emperors-children","Emperor's Children","#b06fd6","#57298a","Chemos purple & gold",{data:"app/data.emperors-children.enc.js",crestImg:"app/crests/emperors-children.png"}),
+  A("traitor","iron-warriors","Iron Warriors","#adb3bd","#474d57","Olympian iron & hazard",{data:"app/data.iron-warriors.enc.js",crestImg:"app/crests/iron-warriors.png"}),
+  A("traitor","night-lords","Night Lords","#5d72d4","#232c70","Nostraman midnight",{data:"app/data.night-lords.enc.js",crestImg:"app/crests/night-lords.png"}),
+  A("traitor","world-eaters","World Eaters","#d23b3b","#6e1414","Blood & brass",{data:"app/data.world-eaters.enc.js",crestImg:"app/crests/world-eaters.png"}),
+  A("traitor","thousand-sons","Thousand Sons","#d8492e","#7a2010","Prosperan crimson & gold",{data:"app/data.thousand-sons.enc.js",crestImg:"app/crests/thousand-sons.png"}),
+  A("traitor","word-bearers","Word Bearers","#9e3b3b","#4e1a1a","Colchisian dark red",{data:"app/data.word-bearers.enc.js",crestImg:"app/crests/word-bearers.png"}),
+  A("traitor","alpha-legion","Alpha Legion","#2bb0a6","#115a54","Hydra turquoise & scales",{data:"app/data.alpha-legion.enc.js",crestImg:"app/crests/alpha-legion.png"}),
   // Generic
   A("generic","neutral","Neutral","#8fb4d6","#33536f","Unaligned steel")
 ];
@@ -1627,6 +1662,40 @@ async function selectArmy(id){
   }
 }
 
+// Crest markup for an army: legion image when one is supplied (a.img / a.crestImg),
+// otherwise the group glyph. Missing image files fall back to the glyph via onerror,
+// so dropping a file into app/crests/ is all that's needed to light up a legion symbol.
+function crestMarkup(a){
+  const g=GROUPS[a.g]||{};
+  const glyph=(a.crest||g.glyph||"✦").replace(/'/g,"");
+  const src=a.img||a.crestImg;
+  if(src) return `<img src="${src}" alt="" onerror="this.parentNode.textContent='${glyph}'">`;
+  return glyph;
+}
+// ---------- Army Special Rules panel ----------
+function renderArmyRules(){
+  const a=ARMY_MAP[curArmy]||ARMIES[0];
+  const cr=document.getElementById("arCrest"); if(cr) cr.innerHTML=crestMarkup(a);
+  const nameEl=document.getElementById("arName"), body=document.getElementById("arBody");
+  if(nameEl) nameEl.textContent=(a.name?a.name+" — ":"")+"Special Rules";
+  const ar=(typeof G!=="undefined"&&G&&G.armyRule)||null;
+  const rules=!ar?[]:(Array.isArray(ar)?ar:[ar]);
+  if(!body) return;
+  if(!rules.length){ body.innerHTML=`<div class="empty">No special rules recorded for this army yet.</div>`; return; }
+  body.innerHTML=rules.map(r=>{
+    const txt=(r.text||"").split(/\n{2,}/).filter(p=>p.trim())
+      .map(p=>`<p>${paraHtml(p)}</p>`).join("");
+    return `<div class="rule">${r.name?`<div class="rname">${esc(r.name)}</div>`:""}${txt}</div>`;
+  }).join("");
+}
+function toggleArmyRules(force){
+  const sec=document.getElementById("armyRules"); if(!sec) return;
+  const open=(force!=null)?force:sec.hidden;
+  sec.hidden=!open;
+  document.getElementById("app").classList.toggle("rules-open",open);
+  if(open){ renderArmyRules(); sec.scrollIntoView({behavior:"smooth",block:"nearest"}); }
+}
+
 function applySkin(id){
   const a=ARMY_MAP[id]||ARMIES[0];
   const g=GROUPS[a.g], accent=a.c[0], accentD=a.c[1];
@@ -1647,8 +1716,9 @@ function applySkin(id){
   const gem=document.querySelector("#skinBtn .gem");
   if(gem){gem.style.setProperty("--g",accent);gem.style.setProperty("--gd",accentD);}
   const crest=document.getElementById("crest");
-  if(crest){ if(a.img){crest.innerHTML=`<img src="${a.img}" alt="">`;} else {crest.textContent=a.crest||g.glyph;} }
+  if(crest) crest.innerHTML=crestMarkup(a);
   const army=document.getElementById("armyName"); if(army) army.textContent=a.name;
+  const arSec=document.getElementById("armyRules"); if(arSec && !arSec.hidden) renderArmyRules();
   const tc=document.querySelector('meta[name="theme-color"]'); if(tc) tc.setAttribute("content",bg);
   renderSkinMenu();
 }
@@ -1661,7 +1731,7 @@ function renderSkinMenu(){
       <summary><span class="gchev">▸</span>${g.label}<span class="gcount">${rows.length}</span></summary>
       ${rows.map(a=>`<button class="armrow" data-army="${a.id}" aria-current="${a.id===curArmy}"
         style="--g:${a.c[0]};--gd:${a.c[1]}">
-        <span class="gem"></span>
+        <span class="armcrest">${crestMarkup(a)}</span>
         <span class="al"><span class="an">${a.name}</span><span class="as">${a.sub}</span></span>
         ${a.id===curArmy?'<span class="ck">✓</span>':""}</button>`).join("")}
     </details>`;
@@ -1698,6 +1768,9 @@ function boot(){
     const add=e.target.closest("[data-add]");if(add){addUnit(add.dataset.add);e.stopPropagation();return;}
     const det=e.target.closest("[data-detail]");if(det)showDetail(det.dataset.detail);
   });
+  // Army Special Rules panel toggle
+  document.getElementById("armyTitle").onclick=()=>toggleArmyRules();
+  document.getElementById("arClose").onclick=()=>toggleArmyRules(false);
   // Build / Play mode toggle
   document.querySelectorAll("#modeSeg button").forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
   // FOC / Open list toggle
