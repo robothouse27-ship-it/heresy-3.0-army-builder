@@ -35,3 +35,6 @@ Thumbs.db
 
 # Note: app/data.enc.js IS committed — it's ciphertext, useless without the passphrase.
 .claude/
+
+# OCR'd rulebook text (readable rules — keep out of public repo)
+ocr_cache/
