@@ -1,7 +1,7 @@
 {
-  "name": "Asuryani Playtest",
-  "short_name": "Asuryani",
-  "description": "Horus Heresy 3.0 Asuryani army list builder & playtest tracker",
+  "name": "Heresy 3.0 Army Builder",
+  "short_name": "Heresy 3.0",
+  "description": "Horus Heresy 3.0 army list builder & playtest tracker",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

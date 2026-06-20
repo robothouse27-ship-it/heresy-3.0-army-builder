@@ -1,4 +1,4 @@
-# Asuryani — Horus Heresy 3.0 Playtest List Builder
+# Heresy 3.0 Army Builder
 
 A shareable, self-hosted army list builder for the custom **Asuryani (Eldar)** HH3.0 playtest
 ruleset. Single-file web app, works offline. The rules ship **encrypted** — the served files
