@@ -413,6 +413,26 @@ main{display:grid;grid-template-columns:minmax(300px,1fr) minmax(360px,1.25fr);o
 .sheet .slot{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px}
 .sheet .x{float:right;background:none;border:none;color:var(--dim);font-size:20px}
 .sheet .x:hover{color:var(--red)}
+/* saved-lists manager */
+.lrows{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.lrow{display:flex;align-items:center;gap:11px;background:var(--panel2);border:1px solid var(--line);
+  border-radius:11px;padding:9px 11px}
+.lrow:hover{border-color:var(--edge)}
+.lcrest{width:30px;height:30px;flex:0 0 30px;display:flex;align-items:center;justify-content:center;
+  color:var(--dim);font-size:17px}
+.lcrest img{max-width:100%;max-height:100%;object-fit:contain}
+.lmeta{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;text-align:left;
+  background:none;border:none;padding:0;cursor:pointer}
+.lmeta .ln{color:var(--bone);font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lmeta .lsub{color:var(--muted);font-size:11px}
+.lmeta:hover .ln{color:var(--accent)}
+.lacts{display:flex;gap:5px;flex:0 0 auto}
+.lbtn{background:var(--panel);border:1px solid var(--line);color:var(--muted);border-radius:8px;
+  padding:6px 10px;font-size:12px;cursor:pointer}
+.lbtn:hover{border-color:var(--edge);color:var(--bone)}
+.lbtn.del:hover{border-color:var(--red);color:var(--red)}
+.lbtn.wide{flex:1;padding:9px 12px}
+.lfoot{display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
 table.stat{width:100%;border-collapse:collapse;margin:10px 0;font-size:12px;
   border:1px solid var(--line);border-radius:10px;overflow:hidden}
 table.stat th,table.stat td{border:1px solid var(--line);padding:6px 6px;text-align:center}
@@ -727,7 +747,9 @@ document.getElementById("armyPick").addEventListener("keydown",e=>{if(e.key==="E
 
 // ---------- engine ----------
 let G={weapons:[],units:[],wargearLists:{},slots:{}}, DET={}, RULES={}, TEMPLATES={}, weaponMap={}, unitMap={};
-const SLOT_ORDER=["Primarch","High Command","Command","Retinue","Elites","Heavy Assault","Troops",
+// "Warlord" = the eighteen Primarchs and a few other powerful warlords (rulebook p285
+// Battlefield Roles). Warlord-role Units fill the Warlord Detachment's Warlord slot.
+const SLOT_ORDER=["Warlord","High Command","Command","Retinue","Elites","Heavy Assault","Troops",
   "Support","War-Engines","Transports","Heavy Transports","Reconnaissance","Fast Attack","Armour",
   "Lords of War","Fortifications"];
 const rid=()=>Math.random().toString(36).slice(2,9);
@@ -1085,6 +1107,7 @@ function render(){
   document.getElementById("rlimit").value=R.limit;
   document.querySelectorAll("#focSeg button").forEach(b=>b.classList.toggle("on",(b.dataset.foc==="open")===!!R.open));
   renderCatalog(); renderRoster();
+  persistAuto();
 }
 function renderCatalog(){
   const q=(document.getElementById("search").value||"").toLowerCase();
@@ -1722,7 +1745,7 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape"){
 
 // ---------- persistence ----------
 function serialize(){
-  return {v:2,name:R.name,limit:R.limit,open:!!R.open,
+  return {v:2,name:R.name,army:curArmy,limit:R.limit,open:!!R.open,
     detachments:R.detachments.map(d=>({tid:d.tid,
       extra:d.slots.filter(s=>s.addedBy).map(s=>({role:s.role,addedBy:s.addedBy})),
       slots:d.slots.map(s=>s.entry?{id:s.entry.id,size:s.entry.size,addons:s.entry.addons,
@@ -1756,30 +1779,122 @@ function hydrate(data){
   } else if(DET.primary){R.detachments.push(newDetachment(DET.primary.id));}
   render();
 }
-const LS="asuryani_rosters";
-function saved(){return JSON.parse(localStorage.getItem(LS)||"{}");}
-document.getElementById("bSave").onclick=()=>{
-  if(!R.name){R.name=prompt("List name?","My Asuryani List")||"Untitled";document.getElementById("rname").value=R.name;}
-  const all=saved();all[R.name]=serialize();localStorage.setItem(LS,JSON.stringify(all));
-  flash("Saved “"+R.name+"”");
-};
-document.getElementById("bLoad").onclick=()=>{
-  const all=saved();const keys=Object.keys(all);
-  if(!keys.length){alert("No saved lists.");return;}
-  const name=prompt("Load which list?\n\n"+keys.join("\n"),keys[0]);
-  if(name&&all[name]) hydrate(all[name]);
-};
+const LS="asuryani_rosters", AUTO_LS="asuryani_autosave";
+function saved(){try{return JSON.parse(localStorage.getItem(LS)||"{}");}catch(e){return {};}}
+function rosterPoints(){let p=0;R.detachments.forEach(d=>p+=detPoints(d));return p;}
+// a saved record = serialize() plus denormalised snapshot fields (points/count/savedAt)
+// so the Saved Lists picker can show them without loading every army's dataset.
+function snapshot(){const r=serialize();r.points=rosterPoints();r.count=allEntries().length;r.savedAt=Date.now();return r;}
+
+// ---- auto-save / recovery ----
+// The working list is mirrored to localStorage on every render so a refresh or
+// crash doesn't lose it. Restored on boot (see boot()), shared links win over it.
+function persistAuto(){try{localStorage.setItem(AUTO_LS,JSON.stringify(snapshot()));}catch(e){}}
+function readAuto(){try{return JSON.parse(localStorage.getItem(AUTO_LS)||"null");}catch(e){return null;}}
+
+// Load a saved/imported/shared roster, switching to its army first when needed so
+// unit ids resolve against the right dataset (mismatch warns instead of silently dropping).
+async function loadRoster(data){
+  if(!data) return;
+  const want=data.army;
+  if(want && want!==LOADED_ARMY){
+    if(ARMY_MAP[want] && (want==="asuryani"||ARMY_MAP[want].data)){
+      try{ await selectArmy(want); }catch(e){ flash("Couldn't switch to "+((ARMY_MAP[want]||{}).name||want)); }
+    }else{
+      flash("⚠ List is for "+((ARMY_MAP[want]||{}).name||want)+" — loading into "+((ARMY_MAP[LOADED_ARMY]||{}).name||LOADED_ARMY));
+    }
+  }
+  hydrate(data);
+}
+
+function saveCurrent(forceName){
+  let name=R.name;
+  if(!name||forceName){ const v=prompt("List name?",name||"My List"); if(v===null) return; name=v.trim()||"Untitled"; }
+  R.name=name; document.getElementById("rname").value=name;
+  const all=saved(); all[name]=snapshot(); localStorage.setItem(LS,JSON.stringify(all));
+  flash("Saved “"+name+"”");
+}
+document.getElementById("bSave").onclick=()=>saveCurrent();
+document.getElementById("bLoad").onclick=openLists;
 document.getElementById("bNew").onclick=()=>{if(confirm("Start a new empty list?")){R=blank();render();}};
+
 document.getElementById("bExport").onclick=()=>{
-  const blob=new Blob([JSON.stringify(serialize(),null,2)],{type:"application/json"});
+  if(!allEntries().length){flash("Add some units first");return;}
+  const rec=serialize(); rec.app="heresy-builder"; rec.exportedAt=Date.now();
+  const blob=new Blob([JSON.stringify(rec,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
-  a.download=(R.name||"asuryani-list").replace(/\s+/g,"-")+".json";a.click();
+  a.download=((R.name||"list").replace(/\s+/g,"-").toLowerCase()||"list")+".json";a.click();
 };
+// Backup every saved list as one file (restored by Import, which merges).
+function exportAll(){
+  const all=saved();
+  if(!Object.keys(all).length){flash("No saved lists to back up");return;}
+  const blob=new Blob([JSON.stringify({app:"heresy-builder",type:"backup",exportedAt:Date.now(),lists:all},null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download="heresy-lists-backup-"+new Date().toISOString().slice(0,10)+".json";a.click();
+}
 document.getElementById("bImport").onclick=()=>document.getElementById("fileIn").click();
 document.getElementById("fileIn").onchange=e=>{
-  const f=e.target.files[0];if(!f)return;const r=new FileReader();
-  r.onload=()=>{try{hydrate(JSON.parse(r.result));}catch(x){alert("Bad file.");}};r.readAsText(f);
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    let data; try{ data=JSON.parse(r.result); }catch(x){ alert("That file isn't valid JSON."); return; }
+    if(data && data.type==="backup" && data.lists){           // a full backup → merge into saved lists
+      const all=saved(); let n=0;
+      Object.keys(data.lists).forEach(k=>{ all[k]=data.lists[k]; n++; });
+      localStorage.setItem(LS,JSON.stringify(all));
+      flash("Imported "+n+" list"+(n===1?"":"s"));
+      if(document.getElementById("modal").classList.contains("show")) openLists();
+    }else if(data && (data.detachments||data.units)){          // a single roster → load it
+      loadRoster(data); flash("Imported list");
+    }else{
+      alert("That doesn't look like a saved list or a backup file.");
+    }
+  };
+  r.readAsText(f);
+  e.target.value="";  // reset so the same file can be picked again
 };
+
+// ---- Saved Lists manager (Load button) ----
+function fmtWhen(t){ if(!t) return ""; const d=new Date(t);
+  return (Date.now()-t)<86400000 ? d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : d.toLocaleDateString(); }
+function openLists(){
+  const all=saved();
+  const names=Object.keys(all).sort((a,b)=>(all[b].savedAt||0)-(all[a].savedAt||0));
+  const rows = names.length ? names.map(n=>{
+    const r=all[n], a=ARMY_MAP[r.army]||{}, crest=r.army?crestMarkup(a):"";
+    const sub=(a.name?esc(a.name)+" · ":"")+(r.points||0)+" pts · "+(r.count||0)+" units"+(r.savedAt?" · "+fmtWhen(r.savedAt):"");
+    return `<div class="lrow">
+      <span class="lcrest">${crest}</span>
+      <button class="lmeta" data-load="${esc(n)}" title="Load this list">
+        <span class="ln">${esc(n)}</span><span class="lsub">${sub}</span></button>
+      <span class="lacts">
+        <button class="lbtn" data-ren="${esc(n)}" title="Rename">✎</button>
+        <button class="lbtn del" data-del="${esc(n)}" title="Delete">🗑</button></span>
+    </div>`;
+  }).join("") : `<div class="empty">No saved lists yet — build a list and hit Save.</div>`;
+  const sheet=document.getElementById("sheet");
+  sheet.innerHTML=`<button class="x" id="mx">×</button><h2>Saved Lists</h2>
+    <div class="slot">${names.length} saved · stored in this browser</div>
+    <div class="lrows">${rows}</div>
+    <div class="lfoot">
+      <button class="lbtn wide" id="lExportAll">⬇ Back up all</button>
+      <button class="lbtn wide" id="lImport">⬆ Import file</button>
+    </div>`;
+  document.getElementById("modal").classList.add("show");
+  document.getElementById("mx").onclick=closeModal;
+  sheet.querySelectorAll("[data-load]").forEach(b=>b.onclick=()=>{ const n=b.dataset.load; closeModal(); loadRoster(all[n]); flash("Loaded “"+n+"”"); });
+  sheet.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{ const n=b.dataset.del;
+    if(confirm("Delete “"+n+"”?")){ const a2=saved(); delete a2[n]; localStorage.setItem(LS,JSON.stringify(a2)); openLists(); } });
+  sheet.querySelectorAll("[data-ren]").forEach(b=>b.onclick=()=>{ const n=b.dataset.ren;
+    const v=prompt("Rename list:",n); if(v===null) return; const nm=v.trim(); if(!nm||nm===n) return;
+    const a2=saved(); if(a2[nm]&&!confirm("“"+nm+"” already exists — overwrite it?")) return;
+    a2[nm]=a2[n]; a2[nm].name=nm; delete a2[n]; localStorage.setItem(LS,JSON.stringify(a2));
+    if(R.name===n){ R.name=nm; document.getElementById("rname").value=nm; }
+    openLists(); });
+  document.getElementById("lExportAll").onclick=exportAll;
+  document.getElementById("lImport").onclick=()=>document.getElementById("fileIn").click();
+}
 document.getElementById("bPrint").onclick=()=>window.print();
 // ---- shareable URL links ----
 // The list (unit ids + config only, never the encrypted rules) is base64'd into the
@@ -2016,10 +2131,12 @@ function boot(){
     actionbar.addEventListener("click",()=>actionbar.classList.remove("show"));
     document.addEventListener("click",e=>{if(!e.target.closest("#actionbar,#moreBtn"))actionbar.classList.remove("show");});
   }
+  // capture restore candidates BEFORE the first render (which overwrites autosave)
+  const shared=readSharedRoster(), auto=readAuto();
   render();
-  // a shared link in the URL wins over the auto-restored session
-  const shared=readSharedRoster();
-  if(shared){ hydrate(shared); flash("Loaded shared list"); }
+  // priority: shared link in the URL > auto-saved working list > fresh blank
+  if(shared){ loadRoster(shared); flash("Loaded shared list"); }
+  else if(auto && auto.count){ loadRoster(auto); flash("Restored your working list"); }
 }
 // Register the offline service worker (no-op if unsupported / insecure origin).
 if("serviceWorker" in navigator){
