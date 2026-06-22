@@ -947,13 +947,14 @@ function entryPoints(e){
   return p;
 }
 function detPoints(d){let p=0;d.slots.forEach(s=>{if(s.entry)p+=entryPoints(s.entry);});return p;}
-// a unit's Battlefield Role may fill a slot of the same role; a prime Command slot
-// also accepts a High Command unit (Special Assignment); a restricted slot (`only`)
-// accepts only units whose id matches one of its keys (faction Auxiliary detachments)
+// a unit's Battlefield Role may fill a slot of the same role; a restricted slot (`only`)
+// accepts only units whose id matches one of its keys (faction Auxiliary detachments).
+// NOTE: a prime Command slot does NOT directly accept High Command units here — that
+// only happens via the Special Assignment Prime Advantage (swapSpecialAssignment sets
+// the entry directly, bypassing this check), so the slot picker stays Command-only.
 function slotAccepts(s,role,unitId){
   if(s.only && unitId && !s.only.some(k=>unitId.includes(k))) return false;
   if(s.role===role) return true;
-  if(s.prime && s.role==="Command" && role==="High Command") return true;
   return false;
 }
 function findOpenSlot(role,unitId){
