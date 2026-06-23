@@ -433,6 +433,18 @@ main{display:grid;grid-template-columns:minmax(300px,1fr) minmax(360px,1.25fr);o
 .lbtn.del:hover{border-color:var(--red);color:var(--red)}
 .lbtn.wide{flex:1;padding:9px 12px}
 .lfoot{display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+/* auth / account */
+.authform{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.authform input{background:var(--panel2);border:1px solid var(--line);color:var(--bone);border-radius:9px;
+  padding:11px 12px;font-size:14px}
+.authform input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--glow)}
+.authrow{display:flex;gap:8px}
+.authrow .lbtn{flex:1;padding:11px 12px;font-size:13px}
+.authrow .lbtn.primary{background:var(--accent-d);border-color:var(--accent);color:var(--bone)}
+.authrow .lbtn.primary:hover{background:var(--accent);color:#04130d}
+.autherr{color:var(--red);font-size:12px;min-height:14px}
+.authnote{color:var(--muted);font-size:12px;line-height:1.5}
+.synced{color:var(--accent);font-size:11px}
 table.stat{width:100%;border-collapse:collapse;margin:10px 0;font-size:12px;
   border:1px solid var(--line);border-radius:10px;overflow:hidden}
 table.stat th,table.stat td{border:1px solid var(--line);padding:6px 6px;text-align:center}
@@ -646,6 +658,7 @@ table.kv td:first-child{color:var(--muted)}
       <button class="btn" id="bExport">Export</button>
       <button class="btn" id="bImport">Import</button>
       <button class="btn" id="bPrint">Print</button>
+      <button class="btn" id="bAuth" title="Sign in to sync your lists">Sign in</button>
     </div>
     <div class="skinpick">
       <button id="skinBtn" title="Army skin"><span class="gem"></span><span id="skinLabel">Asuryani</span> ▾</button>
@@ -1796,6 +1809,105 @@ function snapshot(){const r=serialize();r.points=rosterPoints();r.count=allEntri
 function persistAuto(){try{localStorage.setItem(AUTO_LS,JSON.stringify(snapshot()));}catch(e){}}
 function readAuto(){try{return JSON.parse(localStorage.getItem(AUTO_LS)||"null");}catch(e){return null;}}
 
+// ---- cloud accounts (Supabase email login) ----
+// Lists (just unit ids + config) sync to a per-user row, protected by row-level
+// security. The publishable key is safe to ship. localStorage stays the offline
+// cache: every save writes locally too, so the app works fully signed-out/offline.
+const SB_URL="https://zihbymvqlfrkdmsntbhc.supabase.co";
+const SB_KEY="sb_publishable_A5b6gb62Qut4W0aQLNF9Iw_Wu-2HAiu";
+const CLOUD={ sb:null, user:null, ready:false };
+const signedIn=()=>!!(CLOUD.user);
+async function cloudInit(){
+  try{
+    await loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js");
+    CLOUD.sb=window.supabase.createClient(SB_URL,SB_KEY);
+    const { data }=await CLOUD.sb.auth.getSession();
+    CLOUD.user=(data&&data.session)?data.session.user:null;
+    CLOUD.sb.auth.onAuthStateChange((_e,s)=>{ CLOUD.user=s?s.user:null; updateAuthUI();
+      if(document.getElementById("modal").classList.contains("show")&&document.getElementById("lrowsRoot")) openLists(); });
+    CLOUD.ready=true;
+  }catch(e){ CLOUD.ready=false; }   // offline / blocked → local-only, no error shown
+  updateAuthUI();
+}
+async function cloudList(){
+  const { data,error }=await CLOUD.sb.from("lists").select("name,army,points,count,data,updated_at").order("updated_at",{ascending:false});
+  if(error) throw error; return data||[];
+}
+async function cloudSave(name,rec){
+  const row={ user_id:CLOUD.user.id, name, army:rec.army||null, points:rec.points||0, count:rec.count||0, data:rec, updated_at:new Date().toISOString() };
+  const { error }=await CLOUD.sb.from("lists").upsert(row,{ onConflict:"user_id,name" }); if(error) throw error;
+}
+async function cloudDel(name){ const { error }=await CLOUD.sb.from("lists").delete().eq("name",name); if(error) throw error; }
+async function cloudRename(o,n){ const { error }=await CLOUD.sb.from("lists").update({name:n,updated_at:new Date().toISOString()}).eq("name",o); if(error) throw error; }
+function updateAuthUI(){
+  const b=document.getElementById("bAuth"); if(!b) return;
+  b.textContent=signedIn()?("👤 "+CLOUD.user.email.split("@")[0]):"Sign in";
+  b.title=signedIn()?("Signed in as "+CLOUD.user.email+" — lists sync to your account"):"Sign in to sync your lists";
+}
+function openAuth(){
+  const sheet=document.getElementById("sheet");
+  if(!CLOUD.ready){ sheet.innerHTML=`<button class="x" id="mx">×</button><h2>Accounts</h2>
+    <div class="authnote">Couldn't reach the account service (you may be offline). Your lists are still saved on this device.</div>`;
+    document.getElementById("modal").classList.add("show"); document.getElementById("mx").onclick=closeModal; return; }
+  if(signedIn()){
+    const local=Object.keys(saved()).length;
+    sheet.innerHTML=`<button class="x" id="mx">×</button><h2>Account</h2>
+      <div class="slot">Signed in</div>
+      <div class="authnote">Signed in as <b style="color:var(--bone)">${esc(CLOUD.user.email)}</b>. Your saved lists sync to your account across devices.</div>
+      <div class="authrow" style="margin-top:12px">
+        ${local?`<button class="lbtn" id="aUpload">⬆ Upload ${local} device list${local>1?"s":""}</button>`:""}
+        <button class="lbtn" id="aOut">Sign out</button>
+        <button class="lbtn" id="aLists">My lists</button></div>`;
+    document.getElementById("modal").classList.add("show");
+    document.getElementById("mx").onclick=closeModal;
+    document.getElementById("aOut").onclick=async()=>{ await CLOUD.sb.auth.signOut(); flash("Signed out"); closeModal(); };
+    document.getElementById("aLists").onclick=openLists;
+    const up=document.getElementById("aUpload"); if(up) up.onclick=uploadLocal;
+    return;
+  }
+  const draw=(mode,err)=>{
+    sheet.innerHTML=`<button class="x" id="mx">×</button><h2>${mode==="up"?"Create account":"Sign in"}</h2>
+      <div class="authnote">${mode==="up"?"Make an account to save your lists to the cloud and sync them across devices.":"Sign in to load your lists from any device."}</div>
+      <div class="authform">
+        <input id="aEmail" type="email" placeholder="email" autocomplete="email" value="${esc(err&&err.email||"")}">
+        <input id="aPw" type="password" placeholder="password (min 6 chars)" autocomplete="${mode==="up"?"new-password":"current-password"}">
+        <div class="autherr">${err&&err.msg?esc(err.msg):""}</div>
+        <div class="authrow">
+          <button class="lbtn primary" id="aGo">${mode==="up"?"Create account":"Sign in"}</button></div>
+        <div class="authnote" style="text-align:center">${mode==="up"
+          ?`Have an account? <a href="#" id="aSwap" style="color:var(--accent)">Sign in</a>`
+          :`New here? <a href="#" id="aSwap" style="color:var(--accent)">Create an account</a>`}</div>
+      </div>`;
+    document.getElementById("modal").classList.add("show");
+    document.getElementById("mx").onclick=closeModal;
+    document.getElementById("aSwap").onclick=ev=>{ ev.preventDefault(); draw(mode==="up"?"in":"up"); };
+    const go=async()=>{
+      const email=document.getElementById("aEmail").value.trim(), pw=document.getElementById("aPw").value;
+      if(!email||!pw){ draw(mode,{email,msg:"Enter your email and password."}); return; }
+      document.getElementById("aGo").disabled=true;
+      try{
+        const fn=mode==="up"?CLOUD.sb.auth.signUp.bind(CLOUD.sb.auth):CLOUD.sb.auth.signInWithPassword.bind(CLOUD.sb.auth);
+        const { data,error }=await fn({email,password:pw});
+        if(error) throw error;
+        if(mode==="up"&&data&&!data.session){ draw("in",{email,msg:"Account created — now sign in. (If email confirmation is on, check your inbox first.)"}); return; }
+        CLOUD.user=data.user||(data.session&&data.session.user)||CLOUD.user; updateAuthUI();
+        flash("Signed in as "+email);
+        if(Object.keys(saved()).length) openAuth(); else closeModal();
+      }catch(e){ draw(mode,{email,msg:(e&&e.message)||"Something went wrong."}); }
+    };
+    document.getElementById("aGo").onclick=go;
+    document.getElementById("aPw").onkeydown=e=>{ if(e.key==="Enter") go(); };
+  };
+  draw("in");
+}
+// Push every local list up to the signed-in account (first-time migration).
+async function uploadLocal(){
+  const all=saved(), names=Object.keys(all); if(!names.length||!signedIn()) return;
+  let n=0; for(const nm of names){ try{ await cloudSave(nm,all[nm]); n++; }catch(e){} }
+  flash("Uploaded "+n+" list"+(n===1?"":"s")+" to your account");
+  if(document.getElementById("modal").classList.contains("show")) openLists();
+}
+
 // Load a saved/imported/shared roster, switching to its army first when needed so
 // unit ids resolve against the right dataset (mismatch warns instead of silently dropping).
 async function loadRoster(data){
@@ -1811,15 +1923,21 @@ async function loadRoster(data){
   hydrate(data);
 }
 
-function saveCurrent(forceName){
+async function saveCurrent(forceName){
   let name=R.name;
   if(!name||forceName){ const v=prompt("List name?",name||"My List"); if(v===null) return; name=v.trim()||"Untitled"; }
   R.name=name; document.getElementById("rname").value=name;
-  const all=saved(); all[name]=snapshot(); localStorage.setItem(LS,JSON.stringify(all));
+  const rec=snapshot();
+  const all=saved(); all[name]=rec; localStorage.setItem(LS,JSON.stringify(all));  // local cache (offline)
+  if(signedIn()){
+    try{ await cloudSave(name,rec); flash("Saved “"+name+"” to your account"); return; }
+    catch(e){ flash("Saved on device (cloud error)"); return; }
+  }
   flash("Saved “"+name+"”");
 }
 document.getElementById("bSave").onclick=()=>saveCurrent();
 document.getElementById("bLoad").onclick=openLists;
+document.getElementById("bAuth").onclick=openAuth;
 document.getElementById("bNew").onclick=()=>{if(confirm("Start a new empty list?")){R=blank();render();}};
 
 document.getElementById("bExport").onclick=()=>{
@@ -1862,42 +1980,60 @@ document.getElementById("fileIn").onchange=e=>{
 // ---- Saved Lists manager (Load button) ----
 function fmtWhen(t){ if(!t) return ""; const d=new Date(t);
   return (Date.now()-t)<86400000 ? d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : d.toLocaleDateString(); }
-function openLists(){
-  const all=saved();
-  const names=Object.keys(all).sort((a,b)=>(all[b].savedAt||0)-(all[a].savedAt||0));
-  const rows = names.length ? names.map(n=>{
-    const r=all[n], a=ARMY_MAP[r.army]||{}, crest=r.army?crestMarkup(a):"";
-    const sub=(a.name?esc(a.name)+" · ":"")+(r.points||0)+" pts · "+(r.count||0)+" units"+(r.savedAt?" · "+fmtWhen(r.savedAt):"");
+async function openLists(){
+  const sheet=document.getElementById("sheet");
+  let cloud=signedIn(), items;
+  if(cloud){
+    try{ const rows=await cloudList();
+      items=rows.map(r=>({name:r.name,rec:r.data,army:r.army,points:r.points,count:r.count,when:Date.parse(r.updated_at)})); }
+    catch(e){ cloud=false; flash("Cloud unavailable — showing device lists"); }
+  }
+  if(!cloud){ const all=saved();
+    items=Object.keys(all).map(n=>({name:n,rec:all[n],army:all[n].army,points:all[n].points,count:all[n].count,when:all[n].savedAt})); }
+  items.sort((a,b)=>(b.when||0)-(a.when||0));
+  const rows = items.length ? items.map(it=>{
+    const a=ARMY_MAP[it.army]||{}, crest=it.army?crestMarkup(a):"";
+    const sub=(a.name?esc(a.name)+" · ":"")+(it.points||0)+" pts · "+(it.count||0)+" units"+(it.when?" · "+fmtWhen(it.when):"");
     return `<div class="lrow">
       <span class="lcrest">${crest}</span>
-      <button class="lmeta" data-load="${esc(n)}" title="Load this list">
-        <span class="ln">${esc(n)}</span><span class="lsub">${sub}</span></button>
+      <button class="lmeta" data-load="${esc(it.name)}" title="Load this list">
+        <span class="ln">${esc(it.name)}</span><span class="lsub">${sub}</span></button>
       <span class="lacts">
-        <button class="lbtn" data-ren="${esc(n)}" title="Rename">✎</button>
-        <button class="lbtn del" data-del="${esc(n)}" title="Delete">🗑</button></span>
+        <button class="lbtn" data-ren="${esc(it.name)}" title="Rename">✎</button>
+        <button class="lbtn del" data-del="${esc(it.name)}" title="Delete">🗑</button></span>
     </div>`;
   }).join("") : `<div class="empty">No saved lists yet — build a list and hit Save.</div>`;
-  const sheet=document.getElementById("sheet");
+  const where=cloud?`<span class="synced">☁ ${esc(CLOUD.user.email)} · synced</span>`:"stored on this device";
+  const authBtn=cloud?`<button class="lbtn wide" id="lAcct">Account</button>`
+                     :`<button class="lbtn wide" id="lSignin">Sign in to sync</button>`;
   sheet.innerHTML=`<button class="x" id="mx">×</button><h2>Saved Lists</h2>
-    <div class="slot">${names.length} saved · stored in this browser</div>
-    <div class="lrows">${rows}</div>
+    <div class="slot">${items.length} saved · ${where}</div>
+    <div class="lrows" id="lrowsRoot">${rows}</div>
     <div class="lfoot">
       <button class="lbtn wide" id="lExportAll">⬇ Back up all</button>
       <button class="lbtn wide" id="lImport">⬆ Import file</button>
+      ${authBtn}
     </div>`;
   document.getElementById("modal").classList.add("show");
   document.getElementById("mx").onclick=closeModal;
-  sheet.querySelectorAll("[data-load]").forEach(b=>b.onclick=()=>{ const n=b.dataset.load; closeModal(); loadRoster(all[n]); flash("Loaded “"+n+"”"); });
-  sheet.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{ const n=b.dataset.del;
-    if(confirm("Delete “"+n+"”?")){ const a2=saved(); delete a2[n]; localStorage.setItem(LS,JSON.stringify(a2)); openLists(); } });
-  sheet.querySelectorAll("[data-ren]").forEach(b=>b.onclick=()=>{ const n=b.dataset.ren;
+  const byName=n=>items.find(it=>it.name===n);
+  sheet.querySelectorAll("[data-load]").forEach(b=>b.onclick=()=>{ const it=byName(b.dataset.load); if(!it)return; closeModal(); loadRoster(it.rec); flash("Loaded “"+it.name+"”"); });
+  sheet.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{ const n=b.dataset.del;
+    if(!confirm("Delete “"+n+"”?")) return;
+    if(cloud){ try{ await cloudDel(n); }catch(e){ flash("Couldn't delete from cloud"); return; } }
+    const a2=saved(); if(a2[n]){ delete a2[n]; localStorage.setItem(LS,JSON.stringify(a2)); }
+    openLists(); });
+  sheet.querySelectorAll("[data-ren]").forEach(b=>b.onclick=async()=>{ const n=b.dataset.ren;
     const v=prompt("Rename list:",n); if(v===null) return; const nm=v.trim(); if(!nm||nm===n) return;
-    const a2=saved(); if(a2[nm]&&!confirm("“"+nm+"” already exists — overwrite it?")) return;
-    a2[nm]=a2[n]; a2[nm].name=nm; delete a2[n]; localStorage.setItem(LS,JSON.stringify(a2));
+    if(items.some(it=>it.name===nm)&&!confirm("“"+nm+"” already exists — overwrite it?")) return;
+    if(cloud){ try{ await cloudRename(n,nm); }catch(e){ flash("Couldn't rename in cloud"); return; } }
+    const a2=saved(); if(a2[n]){ a2[nm]={...a2[n],name:nm}; delete a2[n]; localStorage.setItem(LS,JSON.stringify(a2)); }
     if(R.name===n){ R.name=nm; document.getElementById("rname").value=nm; }
     openLists(); });
   document.getElementById("lExportAll").onclick=exportAll;
   document.getElementById("lImport").onclick=()=>document.getElementById("fileIn").click();
+  const si=document.getElementById("lSignin"); if(si) si.onclick=openAuth;
+  const ac=document.getElementById("lAcct"); if(ac) ac.onclick=openAuth;
 }
 document.getElementById("bPrint").onclick=()=>window.print();
 // ---- shareable URL links ----
@@ -2141,6 +2277,7 @@ function boot(){
   // priority: shared link in the URL > auto-saved working list > fresh blank
   if(shared){ loadRoster(shared); flash("Loaded shared list"); }
   else if(auto && auto.count){ loadRoster(auto); flash("Restored your working list"); }
+  cloudInit();   // load Supabase SDK + restore any signed-in session (async, non-blocking)
 }
 // Register the offline service worker (no-op if unsupported / insecure origin).
 if("serviceWorker" in navigator){
