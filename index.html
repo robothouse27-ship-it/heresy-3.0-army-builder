@@ -1077,6 +1077,31 @@ function addUnit(id){
 function cancelPick(){ if(pendingPick){pendingPick=null;renderCatalog();renderRoster();} }
 function delUnit(uid){eachEntry((e,s)=>{if(e.uid===uid)s.entry=null;});
   R.detachments.forEach(d=>{if(d.type==="open")d.slots=d.slots.filter(s=>s.entry);});render();}
+// Clone an entry (same datasheet + all its config) into another open slot. Copies models,
+// upgrades, wargear, gear, manual adjust, tag & notes — but NOT the slot-bound Prime Advantage
+// (those carry once-per-detachment/army limits and belong to the specific slot filled).
+function dupUnit(uid){
+  let src=null, srcDet=null;
+  R.detachments.forEach(d=>d.slots.forEach(s=>{if(s.entry&&s.entry.uid===uid){src=s.entry;srcDet=d;}}));
+  if(!src) return;
+  const u=unitMap[src.id]; if(!u) return;
+  // deep-copy the config so the clone never shares array refs with the source
+  const sd=JSON.parse(JSON.stringify({id:src.id,size:src.size,addons:src.addons,ups:src.ups,
+    gear:src.gear,adjust:src.adjust,tag:src.tag,note:src.note}));
+  const clone=makeEntry(src.id); if(!clone) return;
+  applyEntry(clone,sd);
+  const scrollToNew=()=>requestAnimationFrame(()=>{
+    const el=document.querySelector(`.rentry[data-uid="${justAddedUid}"]`);
+    if(el)el.scrollIntoView({block:"nearest",behavior:"smooth"}); justAddedUid=null;});
+  if(R.open){
+    let od=R.detachments[0]; if(!od||od.type!=="open"){od=openDetachment();R.detachments=[od];}
+    od.slots.push({role:"Open",entry:clone}); justAddedUid=clone.uid; render(); scrollToNew(); return;
+  }
+  // prefer an open matching slot in the same detachment, else the first open one anywhere
+  const slot=(srcDet&&srcDet.slots.find(s=>slotAccepts(s,u.slot,src.id)&&!s.entry))||findOpenSlot(u.slot,src.id);
+  if(!slot){ flash("No open “"+u.slot+"” slot to duplicate into — add a detachment that has one"); return; }
+  slot.entry=clone; justAddedUid=clone.uid; render(); scrollToNew();
+}
 // armour/configuration variants: units sharing a variantGroup are the same datasheet in
 // different plate (Power / Terminator / Saturnine …). Picking one swaps the whole unit.
 function variantsOf(u){
@@ -1396,6 +1421,7 @@ function entryHTML(e,p){
         ${m.perModel>0?`<small>· ${e.size} models</small>`:''}</div>
       <div class="pt">${p} pts</div>
       <button class="gear" data-detail="${e.id}" title="Datasheet">☰</button>
+      <button class="gear" data-dup="${e.uid}" title="Duplicate">⧉</button>
       <button class="x" data-del="${e.uid}" title="Remove">×</button>
     </div>
     <div class="body">${cfg}</div></div>`;
@@ -1437,6 +1463,7 @@ function bindRoster(){
   const root=document.getElementById("roster"); if(!root) return;
   root.querySelectorAll("[data-toggle]").forEach(b=>b.onclick=()=>{const e=find(b.dataset.toggle);if(!e)return;e.open=!e.open;renderRoster();});
   root.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>delUnit(b.dataset.del));
+  root.querySelectorAll("[data-dup]").forEach(b=>b.onclick=()=>dupUnit(b.dataset.dup));
   root.querySelectorAll("[data-detail]").forEach(b=>b.onclick=()=>showDetail(b.dataset.detail));
   root.querySelectorAll("[data-inc]").forEach(b=>b.onclick=()=>{const e=find(b.dataset.inc);if(!e)return;if(e.size<e._m.baseCount+e._m.maxExtra){e.size++;renderRoster();}});
   root.querySelectorAll("[data-dec]").forEach(b=>b.onclick=()=>{const e=find(b.dataset.dec);if(!e)return;if(e.size>e._m.baseCount){e.size--;clampUps(e);renderRoster();}});
