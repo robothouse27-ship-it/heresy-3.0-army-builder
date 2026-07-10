@@ -163,6 +163,10 @@ header.top .grow{flex:1}
 .field input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--glow)}
 .field input.name{width:190px}
 .field input.pts{width:80px;text-align:right;font-family:var(--font-mono)}
+.field select{background:#0006;border:1px solid var(--line);border-radius:8px;color:var(--bone);
+  padding:7px 10px;font-size:13px;letter-spacing:0;text-transform:none;transition:.15s;font-family:inherit}
+.field select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--glow)}
+#wrField{order:8}
 .btn{background:var(--panel2);border:1px solid var(--line);color:var(--bone);border-radius:9px;
   padding:7px 13px;font-size:12px;letter-spacing:.2px;transition:.15s var(--ease)}
 .btn:hover{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 3px var(--glow)}
@@ -646,6 +650,10 @@ table.kv td:first-child{color:var(--muted)}
       <button data-foc="matched" class="on">FOC</button>
       <button data-foc="open">Open</button>
     </div>
+    <div class="field" id="wrField" hidden title="World-Rune: the craftworld sub-faction for this list's Primary/Allied Detachments">
+      <span>World-Rune</span>
+      <select id="wrSel"></select>
+    </div>
     <div class="grow"></div>
     <div class="hbreak b1"></div>
     <div class="hbreak b2"></div>
@@ -852,12 +860,28 @@ function parseModel(u){
 // ---------- roster state ----------
 let R;
 function blank(){
-  const r={name:"",limit:2000,open:false,detachments:[]};
+  const r={name:"",limit:2000,open:false,worldRune:"",detachments:[]};
   if(DET.primary) r.detachments.push(newDetachment(DET.primary.id));
   return r;
 }
 // Open mode = one free bucket, any units, no slots/legality
 function openDetachment(){ return {did:rid(),tid:"__open__",type:"open",name:"Open List",slots:[]}; }
+// World-Rune: Asuryani craftworld sub-faction. Simplified to one army-wide choice
+// (the book ties it to the Primary Detachment's "family"); gates Prime Advantages
+// and Apex Detachments that name a worldRune. Purely cosmetic/inert for armies with none.
+function setupWorldRuneSel(){
+  const field=document.getElementById("wrField"), sel=document.getElementById("wrSel");
+  if(!field||!sel) return;
+  const runes=DET.worldRunes||[];
+  if(!runes.length){ field.hidden=true; return; }
+  field.hidden=false;
+  sel.innerHTML=`<option value="">— none selected —</option>`+
+    runes.map(w=>`<option value="${w.key}">${esc(w.name)}</option>`).join("");
+  sel.onchange=()=>{R.worldRune=sel.value||""; render();};
+}
+function syncWorldRuneUI(){
+  const sel=document.getElementById("wrSel"); if(sel) sel.value=R.worldRune||"";
+}
 function setFoc(open){
   if(!!R.open===!!open) return;
   const entries=allEntries();
@@ -1120,6 +1144,7 @@ function render(){
   document.getElementById("rname").value=R.name;
   document.getElementById("rlimit").value=R.limit;
   document.querySelectorAll("#focSeg button").forEach(b=>b.classList.toggle("on",(b.dataset.foc==="open")===!!R.open));
+  syncWorldRuneUI();
   renderCatalog(); renderRoster();
   persistAuto();
 }
@@ -1202,7 +1227,8 @@ function renderRoster(){
 }
 function addBarHTML(){
   const u=unlocks();
-  const allAux=(DET.auxiliary||[]), aux=allAux.filter(t=>!t.faction), facAux=allAux.filter(t=>t.faction), apex=(DET.apex||[]);
+  const allAux=(DET.auxiliary||[]), aux=allAux.filter(t=>!t.faction), facAux=allAux.filter(t=>t.faction);
+  const apex=(DET.apex||[]).filter(t=>!t.worldRune||t.worldRune===R.worldRune);
   const opt=arr=>arr.map(t=>`<option value="${t.id}">${t.name}${t.verify?" ⚠":""}</option>`).join("");
   const facOpt=facAux.map(t=>{const ok=factionUnlocked(t);return `<option value="${t.id}" ${ok?"":"disabled"}>${t.name}${ok?"":" — "+unlockReason(t)}</option>`;}).join("");
   const facRow=facAux.length?`<div class="addrow"><label>Legion Auxiliary <span class="why">${u.auxFree>0?"uses an Auxiliary slot · some need a trigger unit":"unlock an Auxiliary first"}</span></label>
@@ -1272,7 +1298,8 @@ function renderPrime(e){
       ||(a.roleOnly&&a.roleOnly.indexOf(e._primeRole)<0)
       ||(uniq&&a.key!=="logistical-benefit")
       ||(a.oncePerDetachment&&primeUsed(det,a.key,e.uid))
-      ||(a.oncePerArmy&&R.detachments.some(d=>primeUsed(d,a.key,e.uid)));
+      ||(a.oncePerArmy&&R.detachments.some(d=>primeUsed(d,a.key,e.uid)))
+      ||(a.worldRune&&a.worldRune!==R.worldRune);
     opts+=`<option value="${a.key}" ${e.prime===a.key?"selected":""} ${dis?"disabled":""}>${a.name}${dis?" — n/a":""}</option>`;
   });
   const cur=primeAdvs().find(a=>a.key===e.prime);
@@ -1298,7 +1325,7 @@ function entryHTML(e,p){
   // clickable loadout reference — weapons/wargear + special rules open glossary tips inline
   const wgear=[...new Set(Object.values(u.wargear||{}).flat().filter(Boolean))];
   const srules=Object.values(u.specialRules||{}).flat().filter(x=>x&&x!=="None");
-  const traits=(u.traits||[]).filter(Boolean);
+  const traits=(u.traits||[]).filter(Boolean).map(resolveWorldRuneTrait);
   if(wgear.length||srules.length||traits.length){
     cfg+=`<div class="loadout">`;
     if(wgear.length) cfg+=`<div class="lref"><span class="lk">Wargear</span><span>${wgear.map(gearTerm).join(", ")}</span></div>`;
@@ -1506,7 +1533,7 @@ function playCard(e){
           <td>${isR?(w.RS??'–'):(w.S??'–')}</td><td>${w.AP??'–'}</td><td>${w.D??'–'}</td></tr>`;}).join("")+`</table>`;
   }
   const srules=Object.values(u.specialRules||{}).flat().filter(x=>x&&x!=="None");
-  const traits=(u.traits||[]).filter(Boolean);
+  const traits=(u.traits||[]).filter(Boolean).map(resolveWorldRuneTrait);
   let rhtml="";
   if(srules.length) rhtml+=`<div class="psec">Rules</div><div class="pchips">${srules.map(term).join(", ")}</div>`;
   if(traits.length) rhtml+=`<div class="psec">Traits</div><div class="pchips">${traits.map(term).join(", ")}</div>`;
@@ -1638,6 +1665,13 @@ function buildGloss(){
   const add=(cat,obj)=>{for(const k in (obj||{})){const key=gkey(k);if(key&&!GLOSS[key])GLOSS[key]={name:k,desc:obj[k],cat};}};
   add("Special Rule",g.specialRules); add("Core Rule",g.coreRules); add("Wargear",g.wargear); add("Trait",g.traits);
 }
+// resolve the [World-Rune] bracket-trait placeholder to the roster's chosen rune name
+function resolveWorldRuneTrait(t){
+  if(t!=="[World-Rune]") return t;
+  if(!R.worldRune) return t;
+  const w=(DET.worldRunes||[]).find(x=>x.key===R.worldRune);
+  return w?w.name:t;
+}
 function esc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 function paraHtml(t){return esc(t).replace(/\n/g,"<br>");}
 function tipRef(title,body,sub){const i=tipData.length;tipData.push({title,body,sub:sub||""});return i;}
@@ -1742,7 +1776,7 @@ function showDetail(id){
     });
     html+=`</table></div>`;
   }
-  if(u.traits&&u.traits.length) html+=`<div class="sec"><h3>Traits</h3>${u.traits.map(t=>`<span class="pill">${term(t)}</span>`).join("")}</div>`;
+  if(u.traits&&u.traits.length) html+=`<div class="sec"><h3>Traits</h3>${u.traits.map(t=>`<span class="pill">${term(resolveWorldRuneTrait(t))}</span>`).join("")}</div>`;
   if(u.types&&Object.keys(u.types).length){
     html+=`<div class="sec"><h3>Type</h3>`+Object.entries(u.types).map(([k,v])=>
       `<div style="font-size:12px"><span style="color:var(--muted)">${k==='_'?'':k+': '}</span>${Array.isArray(v)?v.join(', '):v}</div>`).join("")+`</div>`;
@@ -1762,7 +1796,7 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape"){
 
 // ---------- persistence ----------
 function serialize(){
-  return {v:2,name:R.name,army:curArmy,limit:R.limit,open:!!R.open,
+  return {v:2,name:R.name,army:curArmy,limit:R.limit,open:!!R.open,worldRune:R.worldRune||"",
     detachments:R.detachments.map(d=>({tid:d.tid,
       extra:d.slots.filter(s=>s.addedBy).map(s=>({role:s.role,addedBy:s.addedBy})),
       slots:d.slots.map(s=>s.entry?{id:s.entry.id,size:s.entry.size,addons:s.entry.addons,
@@ -1774,7 +1808,7 @@ function applyEntry(e,sd){Object.assign(e,{size:sd.size??e.size,addons:sd.addons
   gear:sd.gear||[],adjust:sd.adjust||0,tag:sd.tag||"",note:sd.note||"",
   prime:sd.prime||"",primeAddRole:sd.primeAddRole||"",open:false});clampUps(e);}
 function hydrate(data){
-  R={name:data.name||"",limit:data.limit||2000,open:!!data.open,detachments:[]};
+  R={name:data.name||"",limit:data.limit||2000,open:!!data.open,worldRune:data.worldRune||"",detachments:[]};
   if(R.open){
     const od=openDetachment();
     ((data.detachments&&data.detachments[0]&&data.detachments[0].slots)||[]).forEach(sd=>{
@@ -2264,6 +2298,8 @@ function boot(){
   document.querySelectorAll("#modeSeg button").forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
   // FOC / Open list toggle
   document.querySelectorAll("#focSeg button").forEach(b=>b.onclick=()=>setFoc(b.dataset.foc==="open"));
+  // World-Rune picker (craftworld sub-faction, gates Prime Advantages + Apex Detachments)
+  setupWorldRuneSel();
   // overflow "⋯" actions menu (mobile)
   const moreBtn=document.getElementById("moreBtn"), actionbar=document.getElementById("actionbar");
   if(moreBtn&&actionbar){
