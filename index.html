@@ -120,7 +120,7 @@ input,select,textarea{font-family:inherit}
 
 /* ---- app ---- */
 #app{display:none;flex-direction:column;height:100vh;overflow:hidden}
-header.top{position:relative;display:flex;align-items:center;gap:12px;padding:9px 16px;
+header.top{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:9px 16px;
   border-bottom:1px solid var(--line);
   background:linear-gradient(180deg,var(--panel2),var(--panel));
   box-shadow:0 1px 0 #ffffff06 inset, 0 6px 18px #0006}
@@ -167,6 +167,7 @@ header.top .grow{flex:1}
   padding:7px 10px;font-size:13px;letter-spacing:0;text-transform:none;transition:.15s;font-family:inherit}
 .field select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--glow)}
 #wrField{order:8}
+#wrField[hidden]{display:none}
 .btn{background:var(--panel2);border:1px solid var(--line);color:var(--bone);border-radius:9px;
   padding:7px 13px;font-size:12px;letter-spacing:.2px;transition:.15s var(--ease)}
 .btn:hover{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 3px var(--glow)}
@@ -490,7 +491,7 @@ table.kv td{border:1px solid var(--line);padding:3px 9px;font-size:12.5px}
 table.kv td:first-child{color:var(--muted)}
 
 /* ---- mode segmented toggle (Build / Play) ---- */
-.modeseg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#0006}
+.modeseg{display:inline-flex;flex-shrink:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#0006}
 .modeseg button{background:none;border:none;color:var(--muted);padding:7px 15px;font-size:12px;
   font-weight:600;letter-spacing:.5px;font-family:var(--font-display);transition:.15s var(--ease)}
 .modeseg button.on{background:var(--accent-d);color:var(--bone);box-shadow:0 0 18px var(--glow)}
@@ -789,6 +790,8 @@ function initEngine(){
   unitMap={}; G.units.forEach(u=>unitMap[u.id]=u);
   buildGloss();
   R = blank();
+  // refresh the World-Rune picker to match this army (Asuryani has runes; legions don't → hidden)
+  if(typeof setupWorldRuneSel==="function") setupWorldRuneSel();
 }
 
 // which model an option belongs to, for grouping ("The Sergeant may…" → Sergeant;
